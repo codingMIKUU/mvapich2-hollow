@@ -1,0 +1,42 @@
+# Autoconf/configure output
+autom4te.cache/
+config.cache
+config.log
+config.status
+libtool
+Makefile
+
+# Automake/libtool build output
+.deps/
+.libs/
+*.o
+*.lo
+*.la
+*.lai
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.gcda
+*.gcno
+*.gcov
+*.log
+*.trs
+.state-cache
+
+# Generated local executables and temporary files
+src/env/mpiname/mpiname
+**/confdb/ylwrap
+unusederr.txt
+src/pm/mpirun/src/hostfile/src_pm_mpirun_src_hostfile_libhostfile_a-parser.[ch]
+src/pm/mpirun/src/slurm/src_pm_mpirun_src_slurm_libnodelist_a-nodelist_parser.[ch]
+src/pm/mpirun/src/slurm/src_pm_mpirun_src_slurm_libtasklist_a-tasklist_parser.[ch]
+*.tmp
+*~
+
+# Editor/OS metadata
+.vscode/
+.idea/
+.DS_Store

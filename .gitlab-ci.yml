@@ -1,0 +1,85 @@
+workflow: 
+  rules:
+    # for pushes direct to master/next-gdr/master-x - can't use this with the 'try' scheduler because no diff is created
+    #- if: $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "master-x" || $CI_COMMIT_BRANCH == "next-gdr"
+    # for merges to master/next-gdr/master-x
+    - if: $CI_MERGE_REQUEST_IID && ($CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master" || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master-x" || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "next-gdr")
+    # for running manually through the Pipelines page
+    - if: $CI_PIPELINE_SOURCE == "web" && $PIPELINE_BRANCH_TYPE
+
+stages:
+  - build
+  - run
+  - clean
+
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_CLONE_PATH: $CI_BUILDS_DIR/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA
+
+.build:
+  stage: build
+  timeout: 2h 
+  tags: 
+    - builder
+  # never run this base build - must be overridden
+  rules:
+    - when: never
+    
+.run:
+  stage: run
+  timeout: 1d
+  tags: 
+    - builder
+  variables: 
+    GIT_STRATEGY: fetch
+  # never run this base build - must be overridden
+  rules:
+    - when: never
+
+before_script:
+  # get branch name
+  - source .gitlab/ci/setup.sh
+
+Build-MV2:
+  extends: .build
+  rules:
+    # merge
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # for running manually through the Pipelines page
+    - if: $CI_PIPELINE_SOURCE == "web" && $PIPELINE_BRANCH_TYPE
+  script: 
+    # activate buildbot for "try"
+    - source ~/buildbot/bin/activate
+    # debugging stuff 
+    - which buildbot
+    - echo "Triggering builds for $BRANCH"
+    - echo "mrail https://scm.mvapich.cse.ohio-state.edu/newbuildbot/#/builders/88"
+    - echo "psm https://scm.mvapich.cse.ohio-state.edu/newbuildbot/#/builders/86"
+    - echo "sock https://scm.mvapich.cse.ohio-state.edu/newbuildbot/#/builders/87"
+    # send the buildbot command and wait until it completes 
+    - buildbot try --connect=pb --master=newbotmaster:8013 --username=gitlab-runner --passwd=passwd --vc=git --branch=origin/$BRANCH --property=source_revision=$CI_COMMIT_SHA --wait --quiet
+
+Run-Tests:
+  extends: .run
+  rules:
+    # merge
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # for running manually through the Pipelines page
+    - if: $CI_PIPELINE_SOURCE == "web" && $PIPELINE_BRANCH_TYPE
+  script:
+    - echo "TODO launch runbot test here for relevant branches"
+    - echo "https://testing.nowlab.cse.ohio-state.edu/mvapich2/grid/MERGES_master/${CI_COMMIT_SHA}/?cluster="
+    - ssh -o StrictHostKeyChecking=no runbot@nowlab /home/runbot/bin/queueTests -r $CI_COMMIT_SHA -b $BUILDER -c gcc -B MERGES/$BRANCH -i /home/runbot/mvapich2/merges/${BUILDER}/${CI_COMMIT_SHA}/gcc/ -C git --project mvapich2
+
+Clean-Dir:
+  stage: clean
+  variables: 
+    GIT_CHECKOUT: "false"
+  tags: 
+    - builder
+  before_script: []
+  when: always
+  script:
+    - rm -rf $CI_BUILDS_DIR/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA
+    - rm -rf $CI_BUILDS_DIR/$CI_COMMIT_REF_NAME/${CI_COMMIT_SHORT_SHA}.tmp
