@@ -69,3 +69,7 @@ The wrapper also sets `IBV_DRIVERS=mlx5`, so the custom mlx5 provider is
 loaded even when the custom rdma-core was built with a non-existent
 `/usr/local/etc/libibverbs.d` configuration directory.  A warning about that
 directory is harmless; creating the directory merely silences the warning.
+The wrapper first honors `RDMA_CORE_LIBDIR`, then automatically checks
+`~/zxm/rdma-core/build-codex/lib` and `~/zxm/rdma-core/build/lib`, allowing
+machines with either existing build-directory convention to use the same
+installed MVAPICH package.

@@ -50,7 +50,17 @@ if [[ -z "$hca" ]]; then
     exit 1
 fi
 
-rdma_lib=${RDMA_CORE_LIBDIR:-"$HOME/zxm/rdma-core/build-codex/lib"}
+if [[ -n "${RDMA_CORE_LIBDIR:-}" ]]; then
+    rdma_lib=$RDMA_CORE_LIBDIR
+elif [[ -r "$HOME/zxm/rdma-core/build-codex/lib/libibverbs.so" ]]; then
+    rdma_lib="$HOME/zxm/rdma-core/build-codex/lib"
+elif [[ -r "$HOME/zxm/rdma-core/build/lib/libibverbs.so" ]]; then
+    rdma_lib="$HOME/zxm/rdma-core/build/lib"
+else
+    echo "Custom rdma-core library not found in build-codex/lib or build/lib." >&2
+    echo "Set RDMA_CORE_LIBDIR to the directory containing libibverbs.so." >&2
+    exit 1
+fi
 if [[ ! -r "$rdma_lib/libibverbs.so" ]]; then
     echo "Custom rdma-core library not found: $rdma_lib" >&2
     exit 1
