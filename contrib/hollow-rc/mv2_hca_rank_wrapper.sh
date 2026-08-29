@@ -14,6 +14,9 @@ esac
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 prefix=$(cd -- "$script_dir/.." && pwd)
+workspace_dir=$(dirname -- "$prefix")
+bundled_rdma_lib="$prefix/lib/hollow-rc-rdma"
+rdma_config="$prefix/etc/hollow-rc-rdma-libdir"
 host=$(hostname -s)
 host_full=$(hostname -f 2>/dev/null || true)
 local_ipv4=$(hostname -I 2>/dev/null || true)
@@ -52,12 +55,16 @@ fi
 
 if [[ -n "${RDMA_CORE_LIBDIR:-}" ]]; then
     rdma_lib=$RDMA_CORE_LIBDIR
-elif [[ -r "$HOME/zxm/rdma-core/build-codex/lib/libibverbs.so" ]]; then
-    rdma_lib="$HOME/zxm/rdma-core/build-codex/lib"
-elif [[ -r "$HOME/zxm/rdma-core/build/lib/libibverbs.so" ]]; then
-    rdma_lib="$HOME/zxm/rdma-core/build/lib"
+elif [[ -r "$bundled_rdma_lib/libibverbs.so" ]]; then
+    rdma_lib=$bundled_rdma_lib
+elif [[ -r "$rdma_config" ]]; then
+    IFS= read -r rdma_lib < "$rdma_config"
+elif [[ -r "$workspace_dir/rdma-core/build-codex/lib/libibverbs.so" ]]; then
+    rdma_lib="$workspace_dir/rdma-core/build-codex/lib"
+elif [[ -r "$workspace_dir/rdma-core/build/lib/libibverbs.so" ]]; then
+    rdma_lib="$workspace_dir/rdma-core/build/lib"
 else
-    echo "Custom rdma-core library not found in build-codex/lib or build/lib." >&2
+    echo "Custom rdma-core library not found for MVAPICH prefix: $prefix" >&2
     echo "Set RDMA_CORE_LIBDIR to the directory containing libibverbs.so." >&2
     exit 1
 fi
@@ -72,6 +79,7 @@ export MV2_NUM_PORTS=1
 export MV2_NUM_QP_PER_PORT=1
 export MV2_DEFAULT_PORT=${MV2_DEFAULT_PORT:-1}
 export MV2_DEFAULT_GID_INDEX=${MV2_DEFAULT_GID_INDEX:-3}
+export MV2_USE_ROCE_MODE=${MV2_USE_ROCE_MODE:-2}
 export MV2_USE_SRQ=1
 export MV2_USE_RING_STARTUP=0
 export MV2_USE_RDMA_CM=0

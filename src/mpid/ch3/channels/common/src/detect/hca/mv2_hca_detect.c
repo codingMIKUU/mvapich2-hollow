@@ -228,6 +228,7 @@ const float get_link_speed(uint8_t speed)
     case 16: return 14.0; /* FDR */
     case 32: return 25.0; /* EDR */
     case 64: return 50.0; /* HDR */
+    case 128: return 100.0; /* NDR / modern 100-Gbit lane encoding */
     default:
         PRINT_ERROR("Invalid link speed %u\n", speed);
         return 0;    /* Invalid speed */

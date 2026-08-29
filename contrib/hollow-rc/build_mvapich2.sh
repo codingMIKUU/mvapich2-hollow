@@ -47,6 +47,7 @@ CC=${CC:-gcc} CXX=${CXX:-g++} \
     --prefix="$prefix" \
     "$mode_option" \
     --disable-fortran \
+    --with-hwloc=v2 \
     --with-ib-include="$rdma_build_dir/include" \
     --with-ib-libpath="$rdma_build_dir/lib"
 
@@ -54,6 +55,25 @@ make -j"$jobs"
 make -j"$jobs" install
 install -m 0755 "$script_dir/mv2_hca_rank_wrapper.sh" "$prefix/bin/"
 
+# Keep the custom userspace RDMA runtime with each MVAPICH installation.
+# Hydra may propagate the launcher's HOME to a remote rank, so runtime lookup
+# must not depend on HOME or on the source checkout having a particular name.
+runtime_dir="$prefix/lib/hollow-rc-rdma"
+mkdir -p "$runtime_dir" "$prefix/etc"
+shopt -s nullglob
+runtime_files=(
+    "$rdma_build_dir/lib/"libibverbs.so*
+    "$rdma_build_dir/lib/"libmlx5.so*
+    "$rdma_build_dir/lib/"libmlx5-rdmav*.so
+    "$rdma_build_dir/lib/"librdmacm.so*
+)
+if (( ${#runtime_files[@]} == 0 )); then
+    echo "No rdma-core runtime libraries found in $rdma_build_dir/lib" >&2
+    exit 1
+fi
+cp -a "${runtime_files[@]}" "$runtime_dir/"
+printf '%s\n' "$rdma_build_dir/lib" > "$prefix/etc/hollow-rc-rdma-libdir"
+
 echo "Installed MVAPICH2 ($mode) in: $prefix"
 echo "Custom rdma-core runtime in:   $rdma_build_dir/lib"
-
+echo "Bundled RDMA runtime in:       $runtime_dir"
