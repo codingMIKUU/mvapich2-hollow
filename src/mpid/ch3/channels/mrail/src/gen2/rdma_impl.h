@@ -286,6 +286,10 @@ do {                                                                    \
 do {                                                                   \
     (_v)->desc.u.sr.qp_type.xrc.remote_srqn =                          \
         (_vc)->mrail.rails[(_rail)].hollow_remote_srqn;                \
+    /* The shared SQ reserves one 64-byte BB per logical WR.  An inline    \
+     * SEND may span multiple BBs and overlap a concurrently reserved      \
+     * slot, so Hollow RC must use the registered vbuf SGE instead. */     \
+    (_v)->desc.u.sr.send_flags &= ~IBV_SEND_INLINE;                    \
 } while (0)
 
 #define IBV_POST_SR(_v, _c, _rail, err_string)                         \
