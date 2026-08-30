@@ -153,6 +153,17 @@ int qp_required(MPIDI_VC_t * vc, int my_rank, int dst_rank)
 {
     int qp_reqd = 1;
 
+    /*
+     * Two-sided collectives use the SMP transport for local peers.  Do not
+     * create loopback/intra-node RDMA QPs merely because the HCA advertises
+     * atomics: ordinary and Hollow RC builds must use the same local path.
+     * This also prevents a Hollow RC KQP group from being consumed by the
+     * local GID before inter-node connections are brought up.
+     */
+    if ((my_rank == dst_rank) ||
+        (rdma_use_smp && vc->smp.local_rank != -1))
+        return 0;
+
     if (g_atomics_support) {
         /* If we support atomics, we always need to create QP to self to
          * ensure correctness */
