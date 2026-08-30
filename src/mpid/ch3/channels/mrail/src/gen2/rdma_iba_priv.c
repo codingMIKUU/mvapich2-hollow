@@ -2515,8 +2515,21 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 
             if (ibv_ops.modify_qp(vc->mrail.rails[rail_index].qp_hndl,
                               &qp_attr, qp_attr_mask)) {
-                fprintf(stderr, "[%s:%d] Could not modify qp"
-                        "to RTR\n", __FILE__, __LINE__);
+                fprintf(stderr,
+                        "[%s:%d] Could not modify qp to RTR: "
+                        "rank=%d peer=%d rail=%d qpn=%u errno=%d (%s) "
+                        "local_gid=%02x%02x:%02x%02x remote_gid=%02x%02x:%02x%02x\n",
+                        __FILE__, __LINE__, pg_rank, i, rail_index,
+                        vc->mrail.rails[rail_index].qp_hndl->qp_num,
+                        errno, strerror(errno),
+                        vc->mrail.rails[rail_index].gid.raw[12],
+                        vc->mrail.rails[rail_index].gid.raw[13],
+                        vc->mrail.rails[rail_index].gid.raw[14],
+                        vc->mrail.rails[rail_index].gid.raw[15],
+                        info->gid[i][rail_index].raw[12],
+                        info->gid[i][rail_index].raw[13],
+                        info->gid[i][rail_index].raw[14],
+                        info->gid[i][rail_index].raw[15]);
                 return 1;
             }
         }

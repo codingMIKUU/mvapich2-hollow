@@ -54,6 +54,7 @@ CC=${CC:-gcc} CXX=${CXX:-g++} \
 make -j"$jobs"
 make -j"$jobs" install
 install -m 0755 "$script_dir/mv2_hca_rank_wrapper.sh" "$prefix/bin/"
+install -m 0755 "$script_dir/mv2_hydra_ssh_wrapper.sh" "$prefix/bin/"
 
 # Keep the custom userspace RDMA runtime with each MVAPICH installation.
 # Hydra may propagate the launcher's HOME to a remote rank, so runtime lookup

@@ -848,9 +848,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     /* Enable all the queue pair connections */
     PRINT_DEBUG(DEBUG_CM_verbose > 0,"Address exchange finished, proceed to enabling connection\n");
     mv2_take_timestamp("rdma_iba_enable_connections", NULL);
-    rdma_iba_enable_connections(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank,
-                                pg, init_info);
+    mpi_errno = rdma_iba_enable_connections(
+        &mv2_MPIDI_CH3I_RDMA_Process, pg_rank, pg, init_info);
     mv2_take_timestamp("rdma_iba_enable_connections", NULL);
+    if (mpi_errno) {
+        MPIR_ERR_SETFATALANDJUMP1(
+            mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s",
+            "failed to enable one or more RDMA QP connections");
+    }
     PRINT_DEBUG(DEBUG_CM_verbose > 0,"Finishing enabling connection\n");
 
     mv2_take_timestamp("UPMI_BARRIER [6]", NULL);

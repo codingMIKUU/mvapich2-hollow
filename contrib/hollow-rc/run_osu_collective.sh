@@ -101,8 +101,11 @@ if [[ -n "$hostfile" ]]; then
     host_args=(-f "$hostfile")
 fi
 
+MV2_REMOTE_WORKSPACE="$remote_workspace" \
+MV2_REMOTE_INSTALL="$remote_install" \
 "$mpiexec" \
     "${host_args[@]}" \
+    -launcher-exec "$prefix/bin/mv2_hydra_ssh_wrapper.sh" \
     -wdir "$run_wdir" \
     -ppn "$ppn" \
     -n "$np" \

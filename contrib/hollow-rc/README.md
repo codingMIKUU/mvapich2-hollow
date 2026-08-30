@@ -26,6 +26,12 @@ and mlx5 provider under `lib/hollow-rc-rdma`. Runtime launch therefore does
 not depend on Hydra's propagated `$HOME`, the source repository name, or an
 external rdma-core build directory.
 
+Hydra normally launches its remote proxy using the launcher's absolute
+installation path, which fails when machines use different account names.
+The installed `mv2_hydra_ssh_wrapper.sh` resolves each remote account's real
+home directory during job startup and launches that host's matching proxy.
+This adds one SSH lookup per remote host at startup and no data-path overhead.
+
 Build the selected transport on **both** machines. The helper derives all
 paths from the source tree, so the account name is not embedded in the
 result:
