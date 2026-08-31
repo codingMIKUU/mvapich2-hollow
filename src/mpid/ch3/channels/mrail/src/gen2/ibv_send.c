@@ -97,6 +97,22 @@ int mv2_post_srq_buffers(int num_bufs, int hca_num)
     int i = 0;
     vbuf* v = NULL;
     struct ibv_recv_wr* bad_wr = NULL;
+#ifdef _ENABLE_HOLLOW_RC_
+    static int hollow_post_target_reported;
+    uint32_t actual_srqn = 0;
+
+    if (!hollow_post_target_reported && getenv("MLX5_SRM_WQE_DEBUG") &&
+        ibv_get_srq_num(
+            mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num],
+            &actual_srqn) == 0) {
+        hollow_post_target_reported = 1;
+        fprintf(stderr,
+                "HOLLOW_SRQ_POST_TARGET pid=%ld hca=%d actual_srqn=%u published_srqn=%u handle=%p\n",
+                (long)getpid(), hca_num, actual_srqn,
+                mv2_MPIDI_CH3I_RDMA_Process.hollow_srqn[hca_num],
+                (void *)mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num]);
+    }
+#endif
     MPIDI_STATE_DECL(MPID_STATE_POST_SRQ_BUFFERS);
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_BUFFERS);
 
