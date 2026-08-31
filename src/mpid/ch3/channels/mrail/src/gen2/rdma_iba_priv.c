@@ -1979,6 +1979,17 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 lids[i][0] = port_attr.lid;
             }
 
+#ifdef _ENABLE_HOLLOW_RC_
+            /*
+             * MPIDI_CH3I_CM_Init() has already called
+             * rdma_iba_hca_init_noqp(), which owns the Hollow receive CQ and
+             * XRC SRQ advertised during the CM information exchange.  Reuse
+             * those resources here.  Recreating them changes the live SRQN
+             * after peers have cached the advertised value and makes every
+             * SEND target an empty, stale SRQ (RNR retry exceeded).
+             */
+            if (!proc->cq_hndl[i]) {
+#endif
             if (rdma_use_blocking) {
                 proc->comp_channel[i] =
                     ibv_ops.create_comp_channel(proc->nic_context[i]);
@@ -2020,8 +2031,14 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                                               "cannot create cq");
                 }
             }
+#ifdef _ENABLE_HOLLOW_RC_
+            }
+#endif
 
             if (proc->has_srq) {
+#ifdef _ENABLE_HOLLOW_RC_
+                if (!proc->srq_hndl[i])
+#endif
                 proc->srq_hndl[i] = create_srq(proc, i);
             }
 #ifdef RDMA_CM
