@@ -358,6 +358,11 @@ struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             ibv_ops.destroy_srq(srq_ptr);
             srq_ptr = NULL;
         }
+        if (getenv("MLX5_SRM_WQE_DEBUG") && srq_ptr)
+            fprintf(stderr,
+                    "HOLLOW_SRQ_CREATE_RETURN hca=%d handle=%p srqn=%u\n",
+                    hca_num, (void *)srq_ptr,
+                    proc->hollow_srqn[hca_num]);
     }
 #elif defined(_ENABLE_XRC_)
     if (USE_XRC) {
@@ -2057,6 +2062,15 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 
             if (proc->has_srq) {
 #ifdef _ENABLE_HOLLOW_RC_
+                if (getenv("MLX5_SRM_WQE_DEBUG")) {
+                    uint32_t before_srqn = 0;
+                    if (proc->srq_hndl[i])
+                        ibv_get_srq_num(proc->srq_hndl[i], &before_srqn);
+                    fprintf(stderr,
+                            "HOLLOW_SRQ_BEFORE site=hca hca=%d handle=%p srqn=%u published=%u\n",
+                            i, (void *)proc->srq_hndl[i], before_srqn,
+                            proc->hollow_srqn[i]);
+                }
                 if (!proc->srq_hndl[i])
 #endif
                 proc->srq_hndl[i] = create_srq(proc, i);
