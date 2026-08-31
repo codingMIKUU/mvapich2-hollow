@@ -1789,6 +1789,16 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             if (!proc->srq_hndl[i])
 #endif
             proc->srq_hndl[i] = create_srq(proc, i);
+#ifdef _ENABLE_HOLLOW_RC_
+            if (getenv("MLX5_SRM_WQE_DEBUG") && proc->srq_hndl[i]) {
+                uint32_t trace_srqn = 0;
+                ibv_get_srq_num(proc->srq_hndl[i], &trace_srqn);
+                fprintf(stderr,
+                        "HOLLOW_SRQ_HANDLE site=noqp hca=%d handle=%p srqn=%u published=%u\n",
+                        i, (void *)proc->srq_hndl[i], trace_srqn,
+                        proc->hollow_srqn[i]);
+            }
+#endif
             if ((proc->srq_hndl[i]) == NULL) {
                 goto err_cq;
             }
@@ -2050,6 +2060,16 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 if (!proc->srq_hndl[i])
 #endif
                 proc->srq_hndl[i] = create_srq(proc, i);
+#ifdef _ENABLE_HOLLOW_RC_
+                if (getenv("MLX5_SRM_WQE_DEBUG") && proc->srq_hndl[i]) {
+                    uint32_t trace_srqn = 0;
+                    ibv_get_srq_num(proc->srq_hndl[i], &trace_srqn);
+                    fprintf(stderr,
+                            "HOLLOW_SRQ_HANDLE site=hca hca=%d handle=%p srqn=%u published=%u\n",
+                            i, (void *)proc->srq_hndl[i], trace_srqn,
+                            proc->hollow_srqn[i]);
+                }
+#endif
             }
 #ifdef RDMA_CM
         }
