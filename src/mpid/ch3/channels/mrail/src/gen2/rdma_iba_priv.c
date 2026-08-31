@@ -358,11 +358,6 @@ struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             ibv_ops.destroy_srq(srq_ptr);
             srq_ptr = NULL;
         }
-        if (getenv("MLX5_SRM_WQE_DEBUG") && srq_ptr)
-            fprintf(stderr,
-                    "HOLLOW_SRQ_CREATE_RETURN hca=%d handle=%p srqn=%u\n",
-                    hca_num, (void *)srq_ptr,
-                    proc->hollow_srqn[hca_num]);
     }
 #elif defined(_ENABLE_XRC_)
     if (USE_XRC) {
@@ -373,9 +368,11 @@ struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                     srq_ptr->xrc_srq_num);
     } else
 #endif /* transport-specific SRQ */
+#ifndef _ENABLE_HOLLOW_RC_
     {
         srq_ptr = ibv_ops.create_srq(proc->ptag[hca_num], &srq_init_attr);
     }
+#endif
 
     if (!srq_ptr) {
         ibv_error_abort(IBV_RETURN_ERR, "Error creating SRQ\n");
@@ -1746,10 +1743,6 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             }
         }
 
-#ifdef _ENABLE_HOLLOW_RC_
-        /* RDMA CM may already have created the CQ/SRQ before this helper. */
-        if (!proc->cq_hndl[i]) {
-#endif
         if (rdma_use_blocking) {
             proc->comp_channel[i] =
                 ibv_ops.create_comp_channel(proc->nic_context[i]);
@@ -1785,25 +1778,9 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 goto err;
             }
         }
-#ifdef _ENABLE_HOLLOW_RC_
-        }
-#endif
 
         if (proc->has_srq) {
-#ifdef _ENABLE_HOLLOW_RC_
-            if (!proc->srq_hndl[i])
-#endif
             proc->srq_hndl[i] = create_srq(proc, i);
-#ifdef _ENABLE_HOLLOW_RC_
-            if (getenv("MLX5_SRM_WQE_DEBUG") && proc->srq_hndl[i]) {
-                uint32_t trace_srqn = 0;
-                ibv_get_srq_num(proc->srq_hndl[i], &trace_srqn);
-                fprintf(stderr,
-                        "HOLLOW_SRQ_HANDLE site=noqp hca=%d handle=%p srqn=%u published=%u\n",
-                        i, (void *)proc->srq_hndl[i], trace_srqn,
-                        proc->hollow_srqn[i]);
-            }
-#endif
             if ((proc->srq_hndl[i]) == NULL) {
                 goto err_cq;
             }
@@ -2004,17 +1981,6 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 lids[i][0] = port_attr.lid;
             }
 
-#ifdef _ENABLE_HOLLOW_RC_
-            /*
-             * MPIDI_CH3I_CM_Init() has already called
-             * rdma_iba_hca_init_noqp(), which owns the Hollow receive CQ and
-             * XRC SRQ advertised during the CM information exchange.  Reuse
-             * those resources here.  Recreating them changes the live SRQN
-             * after peers have cached the advertised value and makes every
-             * SEND target an empty, stale SRQ (RNR retry exceeded).
-             */
-            if (!proc->cq_hndl[i]) {
-#endif
             if (rdma_use_blocking) {
                 proc->comp_channel[i] =
                     ibv_ops.create_comp_channel(proc->nic_context[i]);
@@ -2056,34 +2022,9 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                                               "cannot create cq");
                 }
             }
-#ifdef _ENABLE_HOLLOW_RC_
-            }
-#endif
 
             if (proc->has_srq) {
-#ifdef _ENABLE_HOLLOW_RC_
-                if (getenv("MLX5_SRM_WQE_DEBUG")) {
-                    uint32_t before_srqn = 0;
-                    if (proc->srq_hndl[i])
-                        ibv_get_srq_num(proc->srq_hndl[i], &before_srqn);
-                    fprintf(stderr,
-                            "HOLLOW_SRQ_BEFORE site=hca hca=%d handle=%p srqn=%u published=%u\n",
-                            i, (void *)proc->srq_hndl[i], before_srqn,
-                            proc->hollow_srqn[i]);
-                }
-                if (!proc->srq_hndl[i])
-#endif
                 proc->srq_hndl[i] = create_srq(proc, i);
-#ifdef _ENABLE_HOLLOW_RC_
-                if (getenv("MLX5_SRM_WQE_DEBUG") && proc->srq_hndl[i]) {
-                    uint32_t trace_srqn = 0;
-                    ibv_get_srq_num(proc->srq_hndl[i], &trace_srqn);
-                    fprintf(stderr,
-                            "HOLLOW_SRQ_HANDLE site=hca hca=%d handle=%p srqn=%u published=%u\n",
-                            i, (void *)proc->srq_hndl[i], trace_srqn,
-                            proc->hollow_srqn[i]);
-                }
-#endif
             }
 #ifdef RDMA_CM
         }

@@ -1719,16 +1719,6 @@ int rdma_cm_init_pd_cq()
         {
             proc->srq_hndl[i] = create_srq(proc, i);
         }
-#ifdef _ENABLE_HOLLOW_RC_
-        if (getenv("MLX5_SRM_WQE_DEBUG") && proc->srq_hndl[i]) {
-            uint32_t trace_srqn = 0;
-            ibv_get_srq_num(proc->srq_hndl[i], &trace_srqn);
-            fprintf(stderr,
-                    "HOLLOW_SRQ_HANDLE site=rdma_cm hca=%d handle=%p srqn=%u published=%u\n",
-                    i, (void *)proc->srq_hndl[i], trace_srqn,
-                    proc->hollow_srqn[i]);
-        }
-#endif
 
         PRINT_DEBUG(DEBUG_RDMACM_verbose,"[%d][rail %d] proc->ptag %p, "
             "proc->cq_hndl %p, proc->srq_hndl %p\n",
