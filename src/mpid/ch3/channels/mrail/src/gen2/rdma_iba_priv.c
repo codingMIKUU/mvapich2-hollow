@@ -1741,6 +1741,10 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
             }
         }
 
+#ifdef _ENABLE_HOLLOW_RC_
+        /* RDMA CM may already have created the CQ/SRQ before this helper. */
+        if (!proc->cq_hndl[i]) {
+#endif
         if (rdma_use_blocking) {
             proc->comp_channel[i] =
                 ibv_ops.create_comp_channel(proc->nic_context[i]);
@@ -1776,8 +1780,14 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 goto err;
             }
         }
+#ifdef _ENABLE_HOLLOW_RC_
+        }
+#endif
 
         if (proc->has_srq) {
+#ifdef _ENABLE_HOLLOW_RC_
+            if (!proc->srq_hndl[i])
+#endif
             proc->srq_hndl[i] = create_srq(proc, i);
             if ((proc->srq_hndl[i]) == NULL) {
                 goto err_cq;
