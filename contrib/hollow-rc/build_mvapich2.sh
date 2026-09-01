@@ -79,7 +79,11 @@ if (( ${#runtime_files[@]} == 0 )); then
     echo "No rdma-core runtime libraries found in $rdma_build_dir/lib" >&2
     exit 1
 fi
-cp -a "${runtime_files[@]}" "$runtime_dir/"
+# A previous sudo-driven install may have left root-owned regular files in
+# this user-owned directory.  Replacing each destination pathname first only
+# requires write permission on the directory and avoids mixing old/new ABI
+# copies while preserving the rest of the installation.
+cp -a --remove-destination "${runtime_files[@]}" "$runtime_dir/"
 printf '%s\n' "$rdma_build_dir/lib" > "$prefix/etc/hollow-rc-rdma-libdir"
 
 echo "Installed MVAPICH2 ($mode) in: $prefix"
