@@ -26,6 +26,38 @@ and mlx5 provider under `lib/hollow-rc-rdma`. Runtime launch therefore does
 not depend on Hydra's propagated `$HOME`, the source repository name, or an
 external rdma-core build directory.
 
+## Rebuild only rdma-core after a userspace-provider change
+
+When only the custom rdma-core implementation changes (for example,
+`providers/mlx5/qp.c` or `providers/mlx5/cq.c`), stop all OSU/Hydra processes
+and run:
+
+```bash
+cd ~/zxm/mvapich2-2.3.7
+contrib/hollow-rc/rebuild_rdma_core.sh
+```
+
+The helper incrementally rebuilds the sibling `rdma-core` checkout in
+`build-codex`, copies libibverbs, librdmacm and the mlx5 provider into both
+the ordinary and Hollow RC MVAPICH installation prefixes, and verifies the
+copied libraries.  It does not rebuild MVAPICH2 or install anything under
+`/usr` or `/usr/local`; existing `run_osu_collective.sh` commands can be used
+immediately afterward.
+
+If the rdma-core change modifies public headers, structure layouts, exported
+symbols or another ABI consumed while compiling MVAPICH2, use the same helper
+in full userspace-rebuild mode:
+
+```bash
+cd ~/zxm/mvapich2-2.3.7
+REBUILD_MVAPICH=1 contrib/hollow-rc/rebuild_rdma_core.sh
+```
+
+Set `JOBS=N`, `RDMA_CORE_ROOT=/path/to/rdma-core`, or
+`RDMA_CORE_BUILD=/path/to/build` when the defaults are unsuitable.  A new
+machine should still use `contrib/hollow-rc/bootstrap.sh`; that script also
+installs dependencies and creates both MVAPICH installations from scratch.
+
 Hydra normally launches its remote proxy using the launcher's absolute
 installation path, which fails when machines use different account names.
 The installed `mv2_hydra_ssh_wrapper.sh` resolves each remote account's real
