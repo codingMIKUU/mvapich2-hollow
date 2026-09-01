@@ -6,15 +6,34 @@ Install the Hollow RC kernel driver first, clone this repository under a
 workspace directory, and run:
 
 ```bash
+mkdir -p ~/zxm
+cd ~/zxm
 git clone --branch srm-cq-progress-poll \
-  https://github.com/codingMIKUU/mvapich2-hollow.git
-cd mvapich2-hollow
-contrib/hollow-rc/bootstrap.sh
+  https://github.com/codingMIKUU/mvapich2-hollow.git \
+  mvapich2-2.3.7
+cd mvapich2-2.3.7
+JOBS="$(nproc)" ./install_hollow_rc.sh
 ```
 
-The bootstrap script installs missing Ubuntu build dependencies, clones the
-matching `codingMIKUU/rdma-core` branch beside this repository, builds the
-custom rdma-core in-place, and builds both ordinary and Hollow RC MVAPICH2.
+`install_hollow_rc.sh` is the public one-command entry point. It invokes
+`contrib/hollow-rc/bootstrap.sh`, which performs and verifies all five stages:
+
+1. Install missing Ubuntu build dependencies.
+2. Clone the matching `codingMIKUU/rdma-core` branch beside this repository.
+3. Configure and build custom rdma-core in `~/zxm/rdma-core/build-codex`.
+4. Configure, build and install ordinary MVAPICH2 with
+   `--disable-hollow-rc` into `~/zxm/mvapich2-2.3.7-install`.
+5. Configure, build and install Hollow RC MVAPICH2 with
+   `--enable-hollow-rc` into `~/zxm/mvapich2-2.3.7-hollow-install`.
+
+Stages 4 and 5 both invoke `contrib/hollow-rc/build_mvapich2.sh`. That helper
+passes the custom rdma-core include and library directories to `configure`,
+runs parallel `make` and `make install`, installs the Hydra/HCA wrappers, and
+copies `libibverbs`, `libmlx5`, `librdmacm` and the mlx5 provider into each
+installation's `lib/hollow-rc-rdma` directory. The bootstrap finally checks
+both MPI/OSU executables and compares the bundled RDMA libraries with the
+fresh build before reporting success.
+
 Both MVAPICH2 variants use the bundled hwloc v2; the upstream v1 default
 crashes during affinity setup on hosts with large CPU topologies.
 Set `INSTALL_DEPS=0` to prohibit apt changes, `JOBS=N` to control build
@@ -25,6 +44,12 @@ Each MVAPICH installation receives a private copy of the matching libibverbs
 and mlx5 provider under `lib/hollow-rc-rdma`. Runtime launch therefore does
 not depend on Hydra's propagated `$HOME`, the source repository name, or an
 external rdma-core build directory.
+
+If dependencies are already installed, the same single entry point is:
+
+```bash
+INSTALL_DEPS=0 JOBS="$(nproc)" ./install_hollow_rc.sh
+```
 
 ## Rebuild only rdma-core after a userspace-provider change
 
