@@ -864,11 +864,9 @@ static int cm_send_ud_msg_nopg(cm_msg * msg, struct ibv_ah *ah,
 #ifdef _ENABLE_XRC_
 int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
 {
-    struct ibv_qp_init_attr init_attr;
     struct ibv_qp_attr attr;
     int rail_index, hca_index, port_index;
 
-    memset(&init_attr, 0, sizeof(struct ibv_qp_init_attr));
     memset(&attr, 0, sizeof(struct ibv_qp_attr));
 
     vc->mrail.num_rails = rdma_num_rails;
@@ -912,11 +910,19 @@ int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
                                                            rdma_num_ports))) %
             rdma_num_ports;
 
-        init_attr.xrc_domain =
-            mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index];
-        if (ibv_ops.create_xrc_rcv_qp(&init_attr, &qpn[rail_index])) {
+        struct ibv_qp_init_attr_ex init_attr;
+
+        memset(&init_attr, 0, sizeof(init_attr));
+        init_attr.qp_type = IBV_QPT_XRC_RECV;
+        init_attr.comp_mask = IBV_QP_INIT_ATTR_XRCD;
+        init_attr.xrcd = mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index];
+        vc->ch.xrc_recv_qp[rail_index] =
+            ibv_create_qp_ex(mv2_MPIDI_CH3I_RDMA_Process.nic_context[hca_index],
+                             &init_attr);
+        if (!vc->ch.xrc_recv_qp[rail_index]) {
             goto fn_err;
         }
+        qpn[rail_index] = vc->ch.xrc_recv_qp[rail_index]->qp_num;
         PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Created RQPN: %d(%d) on %d\n",
                     qpn[rail_index], rail_index,
                     MPIDI_Process.my_pg->ch.mrail->cm_shmem.ud_cm[MPIDI_Process.my_pg_rank].xrc_hostid);
@@ -943,11 +949,9 @@ int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
         attr.port_num = vc->mrail.rails[rail_index].port =
             mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];
         set_pkey_index(&attr.pkey_index, hca_index, attr.port_num);
-        if (ibv_ops.modify_xrc_rcv_qp
-            (mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index], qpn[rail_index],
-             &attr,
-             IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT |
-             IBV_QP_ACCESS_FLAGS)) {
+        if (ibv_ops.modify_qp(vc->ch.xrc_recv_qp[rail_index], &attr,
+                             IBV_QP_STATE | IBV_QP_PKEY_INDEX |
+                             IBV_QP_PORT | IBV_QP_ACCESS_FLAGS)) {
             goto fn_err;
         }
     }
@@ -1487,12 +1491,23 @@ static int cm_handle_msg(cm_msg * msg)
                                 "Registered with RQPN %d hca_index: %d on %d\n",
                                 msg->xrc_rqpn[rail_index], hca_index,
                                 MPIDI_Process.my_pg->ch.mrail->cm_shmem.ud_cm[MPIDI_Process.my_pg_rank].xrc_hostid);
-                    if (ibv_ops.reg_xrc_rcv_qp
-                        (mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index],
-                         msg->xrc_rqpn[rail_index])) {
-                        perror("ibv_reg_xrc_rcv_qp");
+                    struct ibv_qp_open_attr open_attr;
+
+                    MPIU_Memset(&open_attr, 0, sizeof(open_attr));
+                    open_attr.comp_mask = IBV_QP_OPEN_ATTR_NUM |
+                                          IBV_QP_OPEN_ATTR_XRCD |
+                                          IBV_QP_OPEN_ATTR_TYPE;
+                    open_attr.qp_num = msg->xrc_rqpn[rail_index];
+                    open_attr.xrcd =
+                        mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index];
+                    open_attr.qp_type = IBV_QPT_XRC_RECV;
+                    vc->ch.xrc_recv_qp[rail_index] =
+                        ibv_open_qp(mv2_MPIDI_CH3I_RDMA_Process.nic_context[hca_index],
+                                    &open_attr);
+                    if (!vc->ch.xrc_recv_qp[rail_index]) {
+                        perror("ibv_open_qp");
                         ibv_error_abort(GEN_EXIT_ERR,
-                                        "Can't register with RCV QP");
+                                        "Can't open shared XRC receive QP");
                     }
                     PRINT_DEBUG(DEBUG_XRC_verbose > 0, "DONE\n");
                     vc->ch.xrc_my_rqpn[rail_index] = msg->xrc_rqpn[rail_index];

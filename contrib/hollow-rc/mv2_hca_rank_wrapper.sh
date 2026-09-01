@@ -83,6 +83,18 @@ export MV2_USE_ROCE_MODE=${MV2_USE_ROCE_MODE:-2}
 export MV2_USE_SRQ=1
 export MV2_USE_RING_STARTUP=0
 export MV2_USE_RDMA_CM=0
+case "${MV2_TRANSPORT_MODE:-ordinary}" in
+    xrc)
+        export MV2_USE_XRC=1
+        ;;
+    ordinary|hollow)
+        export MV2_USE_XRC=0
+        ;;
+    *)
+        echo "Unknown MV2 transport mode: $MV2_TRANSPORT_MODE" >&2
+        exit 1
+        ;;
+esac
 # Use the same eager, all-to-all connection setup for ordinary and Hollow RC.
 # INT_MAX keeps every practical job below the on-demand threshold, while the
 # explicit UD settings prevent the separate UD/RC hybrid data path from being

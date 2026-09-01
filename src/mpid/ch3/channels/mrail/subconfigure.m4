@@ -223,7 +223,7 @@ AC_ARG_ENABLE([xrc],
               [AS_HELP_STRING([--disable-xrc],
                               [compile MVAPICH2 without XRC support])
               ],
-              [enable_xrc=no],
+              [enable_xrc=$enableval],
               [enable_xrc=check])
 
 AC_CHECK_DECLS([IBV_WC_DRIVER1],[wc_drv1_found=yes],[wc_drv1_found=no],[[#include <infiniband/verbs.h>]])
@@ -238,11 +238,36 @@ fi
 
 if test "x$enable_ibv_dlopen" = "xyes"; then
     AC_DEFINE([_ENABLE_IBV_DLOPEN_], [1], [Define to enable abstraction of calls to IB Verbs])
-    if test "x$enable_xrc" = "xcheck"; then
-        AC_CHECK_DECLS([IBV_QPT_XRC],[xrc_qp_found=yes],[xrc_qp_found=no],[[#include <infiniband/verbs.h>]])
-        if test "x$xrc_qp_found" = "xyes"; then
-            AC_DEFINE([_ENABLE_XRC_], [1], [Define to enable XRC support])
-        fi
+    if test "x$enable_xrc" != "xno"; then
+        AC_MSG_CHECKING([for modern XRC verbs support])
+        AC_COMPILE_IFELSE([
+            AC_LANG_PROGRAM([[
+                #include <infiniband/verbs.h>
+            ]], [[
+                struct ibv_qp_init_attr_ex init = { 0 };
+                struct ibv_qp_open_attr open_attr = { 0 };
+                struct ibv_srq_init_attr_ex srq_attr = { 0 };
+                init.qp_type = IBV_QPT_XRC_SEND;
+                open_attr.qp_type = IBV_QPT_XRC_RECV;
+                srq_attr.srq_type = IBV_SRQT_XRC;
+                if (0) {
+                    (void) ibv_open_xrcd(0, 0);
+                    (void) ibv_create_srq_ex(0, &srq_attr);
+                    (void) ibv_create_qp_ex(0, &init);
+                    (void) ibv_open_qp(0, &open_attr);
+                }
+                return !(init.qp_type == IBV_QPT_XRC_SEND &&
+                         open_attr.qp_type == IBV_QPT_XRC_RECV);
+            ]])
+        ], [
+            AC_MSG_RESULT([yes])
+            AC_DEFINE([_ENABLE_XRC_], [1], [Define to enable modern XRC support])
+        ], [
+            AC_MSG_RESULT([no])
+            AS_IF([test "x$enable_xrc" = "xyes"],
+                  [AC_MSG_ERROR([modern XRC verbs support was requested but is unavailable])],
+                  [AC_MSG_WARN([support for XRC is disabled])])
+        ])
     fi
 else
     AC_SEARCH_LIBS(ibv_open_device, ibverbs,, [AC_MSG_ERROR(['libibverbs not found. Did you specify --with-ib-libpath=?'])],)
@@ -250,15 +275,9 @@ else
     AC_SEARCH_LIBS(rdma_create_event_channel, rdmacm,enable_rdma_cm="yes",enable_rdma_cm="no",)
     AC_SEARCH_LIBS(mad_get_field, ibmad, lib_mad_found="yes", lib_mad_found="no",)
     # Check for available functions after finding header files
-    AC_CHECK_FUNCS([ibv_open_xrc_domain])
-   
-    AS_CASE([$ac_cv_func_ibv_open_xrc_domain],
-            [no], [AS_CASE([$enable_xrc],
-                           [check], [AC_MSG_WARN([support for XRC is disabled])],
-                           [yes], [AC_MSG_ERROR([infiniband/verbs.h does not provide support for XRC])])],
-            [yes], [AS_CASE([$enable_xrc],
-                            [no], [],
-                            [AC_DEFINE([_ENABLE_XRC_], [1], [Define to enable XRC support])])])
+    AS_IF([test "x$enable_xrc" != "xno"], [
+        AC_MSG_ERROR([modern XRC requires the default ibv-dlopen abstraction])
+    ])
 fi
 
 AC_ARG_ENABLE([mcast],

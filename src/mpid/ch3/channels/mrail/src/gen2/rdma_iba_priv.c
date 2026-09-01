@@ -361,11 +361,20 @@ struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     }
 #elif defined(_ENABLE_XRC_)
     if (USE_XRC) {
-        srq_ptr = ibv_ops.create_xrc_srq(proc->ptag[hca_num],
-                                     proc->xrc_domain[hca_num],
-                                     proc->cq_hndl[hca_num], &srq_init_attr);
-        PRINT_DEBUG(DEBUG_XRC_verbose > 0, "created xrc srq %d\n",
-                    srq_ptr->xrc_srq_num);
+        struct ibv_srq_init_attr_ex xrc_attr;
+
+        MPIU_Memset(&xrc_attr, 0, sizeof(xrc_attr));
+        xrc_attr.srq_context = proc->nic_context[hca_num];
+        xrc_attr.attr = srq_init_attr.attr;
+        xrc_attr.comp_mask = IBV_SRQ_INIT_ATTR_TYPE |
+                             IBV_SRQ_INIT_ATTR_PD |
+                             IBV_SRQ_INIT_ATTR_XRCD |
+                             IBV_SRQ_INIT_ATTR_CQ;
+        xrc_attr.srq_type = IBV_SRQT_XRC;
+        xrc_attr.pd = proc->ptag[hca_num];
+        xrc_attr.xrcd = proc->xrc_domain[hca_num];
+        xrc_attr.cq = proc->cq_hndl[hca_num];
+        srq_ptr = ibv_create_srq_ex(proc->nic_context[hca_num], &xrc_attr);
     } else
 #endif /* transport-specific SRQ */
 #ifndef _ENABLE_HOLLOW_RC_
@@ -1785,9 +1794,14 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 goto err_cq;
             }
 #ifdef _ENABLE_XRC_
-            proc->xrc_srqn[i] = proc->srq_hndl[i]->xrc_srq_num;
-            PRINT_DEBUG(DEBUG_XRC_verbose > 0, "My SRQN=%d rail:%d\n",
-                        proc->xrc_srqn[i], i);
+            if (USE_XRC) {
+                if (ibv_get_srq_num(proc->srq_hndl[i], &proc->xrc_srqn[i])) {
+                    fprintf(stderr, "cannot query XRC SRQ number\n");
+                    goto err_cq;
+                }
+                PRINT_DEBUG(DEBUG_XRC_verbose > 0, "My SRQN=%d rail:%d\n",
+                            proc->xrc_srqn[i], i);
+            }
 #endif /* _ENABLE_XRC_ */
         }
     }
@@ -2948,9 +2962,8 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
         attr.cap.max_send_wr = rdma_default_max_send_wqe;
 #ifdef _ENABLE_XRC_
         if (USE_XRC && qptype == MV2_QPT_XRC) {
-            attr.xrc_domain = mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index];
-            MPIU_Assert(attr.xrc_domain != NULL);
-            attr.qp_type = IBV_QPT_XRC;
+            MPIU_Assert(mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index] != NULL);
+            attr.qp_type = IBV_QPT_XRC_SEND;
             attr.srq = NULL;
             attr.cap.max_recv_wr = 0;
         } else
@@ -2971,13 +2984,36 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
         attr.recv_cq = mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
         attr.sq_sig_all = 0;
 
-        #ifdef _ENABLE_HOLLOW_RC_
+#ifdef _ENABLE_HOLLOW_RC_
         vc->mrail.rails[rail_index].qp_hndl = mv2_create_hollow_qp(
             &mv2_MPIDI_CH3I_RDMA_Process, hca_index, &attr);
-        #else
+#elif defined(_ENABLE_XRC_)
+        if (USE_XRC && qptype == MV2_QPT_XRC) {
+            struct ibv_qp_init_attr_ex xrc_attr;
+
+            MPIU_Memset(&xrc_attr, 0, sizeof(xrc_attr));
+            xrc_attr.qp_context = attr.qp_context;
+            xrc_attr.send_cq = attr.send_cq;
+            xrc_attr.recv_cq = attr.recv_cq;
+            xrc_attr.srq = NULL;
+            xrc_attr.cap = attr.cap;
+            xrc_attr.qp_type = IBV_QPT_XRC_SEND;
+            xrc_attr.sq_sig_all = attr.sq_sig_all;
+            xrc_attr.comp_mask = IBV_QP_INIT_ATTR_PD;
+            xrc_attr.pd = mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index];
+            vc->mrail.rails[rail_index].qp_hndl =
+                ibv_create_qp_ex(mv2_MPIDI_CH3I_RDMA_Process.nic_context[hca_index],
+                                 &xrc_attr);
+            attr.cap = xrc_attr.cap;
+        } else {
+            vc->mrail.rails[rail_index].qp_hndl =
+                ibv_ops.create_qp(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index],
+                                  &attr);
+        }
+#else
         vc->mrail.rails[rail_index].qp_hndl =
             ibv_ops.create_qp(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index], &attr);
-        #endif
+#endif
 
         if (!vc->mrail.rails[rail_index].qp_hndl) {
             ibv_va_error_abort(GEN_EXIT_ERR, "Failed to create QP. "
@@ -3089,11 +3125,11 @@ int cm_qp_create(MPIDI_VC_t * vc, int force, int qptype)
                          */
                         match = 1;
                         break;
-                    } else if ((use_iboeth  || vc->mrail.rails[rail_index].is_roce)
-                                      && memcmp(&vc->mrail.gid[hca_index][port_index],
-                                      &iter->vc->mrail.
-                                      gid[hca_index][port_index],
-                                      sizeof(union ibv_gid))) {
+                    } else if ((use_iboeth || vc->mrail.rails[rail_index].is_roce)
+                               && !memcmp(&vc->mrail.gid[hca_index][port_index],
+                                          &iter->vc->mrail.
+                                          gid[hca_index][port_index],
+                                          sizeof(union ibv_gid))) {
                         /* We're using RoCE mode. Check for GID's instead of
                          * LID's. As above if GID's match we can re-use QP
                          */
@@ -3246,9 +3282,9 @@ int cm_qp_move_to_rtr(MPIDI_VC_t * vc, uint16_t * lids, union ibv_gid *gids,
             /* Move rcv qp to RTR */
             PRINT_DEBUG(DEBUG_XRC_verbose > 0, "%d <-> %d\n",
                         rqpn[rail_index], qp_attr.dest_qp_num);
-            if (ibv_ops.modify_xrc_rcv_qp
-                (mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index],
-                 rqpn[rail_index], &qp_attr, qp_attr_mask)) {
+            if (!vc->ch.xrc_recv_qp[rail_index] ||
+                ibv_ops.modify_qp(vc->ch.xrc_recv_qp[rail_index],
+                                  &qp_attr, qp_attr_mask)) {
                 ibv_error_abort(GEN_EXIT_ERR, "Failed to modify QP to RTR\n");
             }
         } else  /* Move send qp to RTR */

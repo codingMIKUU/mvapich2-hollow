@@ -209,6 +209,7 @@ typedef struct MPIDI_CH3I_VC
     uint32_t                    xrc_srqn[MAX_NUM_HCAS];
     uint32_t                    xrc_rqpn[MAX_NUM_SUBRAILS];
     uint32_t                    xrc_my_rqpn[MAX_NUM_SUBRAILS];
+    struct ibv_qp              *xrc_recv_qp[MAX_NUM_SUBRAILS];
 #endif
     MPIDI_msg_sz_t              pending_r3_data;
     MPIDI_msg_sz_t              received_r3_data;

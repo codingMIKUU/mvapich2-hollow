@@ -52002,7 +52002,7 @@ fi
 
 # Check whether --enable-xrc was given.
 if test "${enable_xrc+set}" = set; then :
-  enableval=$enable_xrc; enable_xrc=no
+  enableval=$enable_xrc; enable_xrc=$enableval
 else
   enable_xrc=check
 fi
@@ -52058,29 +52058,60 @@ if test "x$enable_ibv_dlopen" = "xyes"; then
 
 $as_echo "#define _ENABLE_IBV_DLOPEN_ 1" >>confdefs.h
 
-    if test "x$enable_xrc" = "xcheck"; then
-        ac_fn_c_check_decl "$LINENO" "IBV_QPT_XRC" "ac_cv_have_decl_IBV_QPT_XRC" "#include <infiniband/verbs.h>
-"
-if test "x$ac_cv_have_decl_IBV_QPT_XRC" = xyes; then :
-  ac_have_decl=1
-else
-  ac_have_decl=0
-fi
+    if test "x$enable_xrc" != "xno"; then
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for modern XRC verbs support" >&5
+$as_echo_n "checking for modern XRC verbs support... " >&6; }
+        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
 
-cat >>confdefs.h <<_ACEOF
-#define HAVE_DECL_IBV_QPT_XRC $ac_have_decl
+
+                #include <infiniband/verbs.h>
+
+int
+main ()
+{
+
+                struct ibv_qp_init_attr_ex init = { 0 };
+                struct ibv_qp_open_attr open_attr = { 0 };
+                struct ibv_srq_init_attr_ex srq_attr = { 0 };
+                init.qp_type = IBV_QPT_XRC_SEND;
+                open_attr.qp_type = IBV_QPT_XRC_RECV;
+                srq_attr.srq_type = IBV_SRQT_XRC;
+                if (0) {
+                    (void) ibv_open_xrcd(0, 0);
+                    (void) ibv_create_srq_ex(0, &srq_attr);
+                    (void) ibv_create_qp_ex(0, &init);
+                    (void) ibv_open_qp(0, &open_attr);
+                }
+                return !(init.qp_type == IBV_QPT_XRC_SEND &&
+                         open_attr.qp_type == IBV_QPT_XRC_RECV);
+
+  ;
+  return 0;
+}
+
 _ACEOF
-if test $ac_have_decl = 1; then :
-  xrc_qp_found=yes
-else
-  xrc_qp_found=no
-fi
+if ac_fn_c_try_compile "$LINENO"; then :
 
-        if test "x$xrc_qp_found" = "xyes"; then
+            { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
 
 $as_echo "#define _ENABLE_XRC_ 1" >>confdefs.h
 
-        fi
+
+else
+
+            { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+            if test "x$enable_xrc" = "xyes"; then :
+  as_fn_error $? "modern XRC verbs support was requested but is unavailable" "$LINENO" 5
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: support for XRC is disabled" >&5
+$as_echo "$as_me: WARNING: support for XRC is disabled" >&2;}
+fi
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
     fi
 else
     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing ibv_open_device" >&5
@@ -52316,41 +52347,11 @@ else
 fi
 
     # Check for available functions after finding header files
-    for ac_func in ibv_open_xrc_domain
-do :
-  ac_fn_c_check_func "$LINENO" "ibv_open_xrc_domain" "ac_cv_func_ibv_open_xrc_domain"
-if test "x$ac_cv_func_ibv_open_xrc_domain" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_IBV_OPEN_XRC_DOMAIN 1
-_ACEOF
+    if test "x$enable_xrc" != "xno"; then :
+
+        as_fn_error $? "modern XRC requires the default ibv-dlopen abstraction" "$LINENO" 5
 
 fi
-done
-
-
-    case $ac_cv_func_ibv_open_xrc_domain in #(
-  no) :
-    case $enable_xrc in #(
-  check) :
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: support for XRC is disabled" >&5
-$as_echo "$as_me: WARNING: support for XRC is disabled" >&2;} ;; #(
-  yes) :
-    as_fn_error $? "infiniband/verbs.h does not provide support for XRC" "$LINENO" 5 ;; #(
-  *) :
-     ;;
-esac ;; #(
-  yes) :
-    case $enable_xrc in #(
-  no) :
-     ;; #(
-  *) :
-
-$as_echo "#define _ENABLE_XRC_ 1" >>confdefs.h
- ;;
-esac ;; #(
-  *) :
-     ;;
-esac
 fi
 
 # Check whether --enable-mcast was given.

@@ -21,8 +21,9 @@ JOBS="$(nproc)" ./install_hollow_rc.sh
 1. Install missing Ubuntu build dependencies.
 2. Clone the matching `codingMIKUU/rdma-core` branch beside this repository.
 3. Configure and build custom rdma-core in `~/zxm/rdma-core/build-codex`.
-4. Configure, build and install ordinary MVAPICH2 with
-   `--disable-hollow-rc` into `~/zxm/mvapich2-2.3.7-install`.
+4. Configure, build and install ordinary/XRC MVAPICH2 with
+   `--disable-hollow-rc --enable-xrc` into
+   `~/zxm/mvapich2-2.3.7-install`.
 5. Configure, build and install Hollow RC MVAPICH2 with
    `--enable-hollow-rc` into `~/zxm/mvapich2-2.3.7-hollow-install`.
 
@@ -99,9 +100,10 @@ contrib/hollow-rc/build_mvapich2.sh ordinary
 contrib/hollow-rc/build_mvapich2.sh hollow
 ```
 
-The defaults create separate installs:
+The defaults create two installs. Ordinary RC and XRC share the first binary
+and are selected at launch; Hollow RC uses the second binary:
 
-- `~/zxm/mvapich2-2.3.7-install`
+- `~/zxm/mvapich2-2.3.7-install` (ordinary RC and XRC)
 - `~/zxm/mvapich2-2.3.7-hollow-install`
 
 Run from either machine. Use reachable management/RDMA-network IP addresses;
@@ -152,10 +154,28 @@ contrib/hollow-rc/run_osu_collective.sh hollow alltoall
 ```
 
 Arguments after the benchmark name are passed to OSU. With no arguments the
-script uses `-m 1:1048576 -i 1000 -x 200 -f`. Both modes force the same
+script uses `-m 1:1048576 -i 1000 -x 200 -f`. All three modes force the same
 single-HCA, single-port, single-rail, SRQ and static-PMI setup so the ordinary
-and Hollow RC measurements are directly comparable. Replace `hollow` with
-`ordinary` to select the separately installed ordinary-RC build.
+RC, XRC and Hollow RC measurements are directly comparable. Use `ordinary`
+or `xrc` to select the corresponding runtime path in the ordinary/XRC build,
+or `hollow` to select the separate Hollow binary. The rank wrapper translates
+the mode into `MV2_USE_XRC=0/1`; no source edit or reinstall is required when
+switching between ordinary RC and XRC.
+
+For example, a two-machine XRC run is:
+
+```bash
+HOSTS=192.168.1.5,192.168.1.1 \
+HCA_MAP=192.168.1.5=mlx5_1,192.168.1.1=mlx5_3 \
+USER_MAP=192.168.1.5=lingbo11,192.168.1.1=lingbo12 \
+NP=16 PPN=8 \
+contrib/hollow-rc/run_osu_collective.sh xrc allreduce \
+  -m 4:1048576 -i 1000 -x 200 -f
+```
+
+At startup rank 0 prints `MV2 transport=xrc` when the XRC path is active.
+XRC uses the modern rdma-core XRCD, XRC SRQ, XRC send-QP and receive-QP APIs;
+the previous removed `ibv_open_xrc_domain` API is not required.
 
 Both installed modes also use Basic all-to-all connection management.  The
 rank wrapper fixes `MV2_ON_DEMAND_THRESHOLD=2147483647` and disables the UD

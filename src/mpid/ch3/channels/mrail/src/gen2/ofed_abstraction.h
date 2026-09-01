@@ -133,26 +133,6 @@ typedef struct _ibv_ops_t {
     const char* (*node_type_str)(enum ibv_node_type node_type);
     const char* (*port_state_str)(enum ibv_port_state port_state);
     const char* (*wc_status_str)(enum ibv_wc_status status);
-    /* XRC related functions */
-    struct ibv_xrc_domain* (*open_xrc_domain)(struct ibv_context *context,
-                           int fd, int oflag);
-    struct ibv_srq* (*create_xrc_srq)(struct ibv_pd *pd,
-                       struct ibv_xrc_domain *xrc_domain,
-                       struct ibv_cq *xrc_cq,
-                       struct ibv_srq_init_attr *srq_init_attr);
-    int (*close_xrc_domain)(struct ibv_xrc_domain *d);
-    int (*create_xrc_rcv_qp)(struct ibv_qp_init_attr *init_attr,
-                  uint32_t *xrc_rcv_qpn);
-    int (*modify_xrc_rcv_qp)(struct ibv_xrc_domain *xrc_domain,
-                  uint32_t xrc_qp_num,
-                  struct ibv_qp_attr *attr, int attr_mask);
-    int (*query_xrc_rcv_qp)(struct ibv_xrc_domain *xrc_domain, uint32_t xrc_qp_num,
-                 struct ibv_qp_attr *attr, int attr_mask,
-                 struct ibv_qp_init_attr *init_attr);
-    int (*reg_xrc_rcv_qp)(struct ibv_xrc_domain *xrc_domain,
-                    uint32_t xrc_qp_num);
-    int (*unreg_xrc_rcv_qp)(struct ibv_xrc_domain *xrc_domain,
-                 uint32_t xrc_qp_num);
 } ibv_ops_t;
 
 extern ibv_ops_t ibv_ops;
@@ -380,17 +360,6 @@ static inline int mv2_ibv_dlopen_init()
     MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, node_type_str);
     MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, port_state_str);
     MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, wc_status_str);
-#ifdef _ENABLE_XRC_
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, open_xrc_domain);
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, create_xrc_srq);
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, close_xrc_domain);
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, create_xrc_rcv_qp);
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, modify_xrc_rcv_qp);
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, query_xrc_rcv_qp);
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, reg_xrc_rcv_qp);
-    MV2_DLSYM(ibv_ops, ibv_dl_handle, ibv, unreg_xrc_rcv_qp);
-#endif /*_ENABLE_XRC_*/
-
     return SUCCESS_DLOPEN;
 }
 

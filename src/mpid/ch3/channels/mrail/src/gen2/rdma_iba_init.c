@@ -303,9 +303,15 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         MPL_error_printf("MV2 transport=hollow-rc abi=%u rails=1\n",
                          MV2_HOLLOW_RC_TRANSPORT_ABI);
 #else
-    if (pg_rank == 0)
-        PRINT_DEBUG(DEBUG_INIT_verbose,
-                    "MV2 transport=ordinary-rc rails=%d\n", rdma_num_rails);
+    if (pg_rank == 0) {
+#ifdef _ENABLE_XRC_
+        if (USE_XRC)
+            MPL_error_printf("MV2 transport=xrc rails=%d\n", rdma_num_rails);
+        else
+#endif
+            PRINT_DEBUG(DEBUG_INIT_verbose,
+                        "MV2 transport=ordinary-rc rails=%d\n", rdma_num_rails);
+    }
 #endif
 
     if (rdma_multirail_usage_policy == MV2_MRAIL_SHARING) {
@@ -1294,8 +1300,15 @@ static int mv2_xrc_cleanup(int start)
     mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
     for (i = start; i >= 0; --i) {
+        if (proc->xrc_domain[i]) {
+            ibv_close_xrcd(proc->xrc_domain[i]);
+            proc->xrc_domain[i] = NULL;
+        }
         MPL_snprintf(xrc_file, 512, "/dev/shm/%s-%d", ufile, i);
-        close(proc->xrc_fd[i]);
+        if (proc->xrc_fd[i] >= 0) {
+            close(proc->xrc_fd[i]);
+            proc->xrc_fd[i] = -1;
+        }
         unlink(xrc_file);
     }
 
@@ -1309,6 +1322,7 @@ static int mv2_xrc_cleanup(int start)
 static int mv2_xrc_init(MPIDI_PG_t * pg)
 {
     int i, mpi_errno = MPI_SUCCESS;
+    struct ibv_xrcd_init_attr xrcd_attr;
 
     MPIDI_STATE_DECL(MPID_STATE_CH3I_MV2_XRC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_MV2_XRC_INIT);
@@ -1324,6 +1338,8 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
     }
 
     for (i = 0; i < rdma_num_hcas; i++) {
+        proc->xrc_fd[i] = -1;
+        proc->xrc_domain[i] = NULL;
         MPL_snprintf(xrc_file, 512, "/dev/shm/%s-%d", ufile, i);
         PRINT_DEBUG(DEBUG_XRC_verbose > 0, "Opening xrc file: %s\n", xrc_file);
         proc->xrc_fd[i] = open(xrc_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -1336,8 +1352,13 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
                                       "%s: %s", "open", strerror(errno));
         }
 
-        proc->xrc_domain[i] = ibv_ops.open_xrc_domain(proc->nic_context[i],
-                                                  proc->xrc_fd[i], O_CREAT);
+        MPIU_Memset(&xrcd_attr, 0, sizeof(xrcd_attr));
+        xrcd_attr.comp_mask = IBV_XRCD_INIT_ATTR_FD |
+                              IBV_XRCD_INIT_ATTR_OFLAGS;
+        xrcd_attr.fd = proc->xrc_fd[i];
+        xrcd_attr.oflags = O_CREAT;
+        proc->xrc_domain[i] = ibv_open_xrcd(proc->nic_context[i],
+                                            &xrcd_attr);
 
         if (NULL == proc->xrc_domain[i]) {
             /* Cleanup all the XRC files and FD's open till this point */
@@ -2494,20 +2515,22 @@ int MPIDI_CH3I_CM_Finalize(void)
             hca_index = rail_index / (rdma_num_ports *
                                       rdma_num_qp_per_port);
             if (USE_XRC && vc->ch.xrc_my_rqpn[rail_index] != 0) {
-                /*  Unregister recv QP */
-                PRINT_DEBUG(DEBUG_XRC_verbose > 0, "unreg %d",
+                /* Drop this process' create/open reference to the shared
+                 * modern XRC receive QP. */
+                PRINT_DEBUG(DEBUG_XRC_verbose > 0, "close XRC recv QP %d",
                             vc->ch.xrc_my_rqpn[rail_index]);
-                if ((retval =
-                    ibv_ops.unreg_xrc_rcv_qp(mv2_MPIDI_CH3I_RDMA_Process.
-                                          xrc_domain[hca_index],
-                                          vc->ch.
-                                          xrc_my_rqpn[rail_index])) != 0) {
-                    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "unreg failed %d %d",
+                retval = vc->ch.xrc_recv_qp[rail_index] ?
+                    ibv_ops.destroy_qp(vc->ch.xrc_recv_qp[rail_index]) :
+                    EINVAL;
+                if (retval != 0) {
+                    PRINT_DEBUG(DEBUG_XRC_verbose > 0, "close failed %d %d",
                                 vc->ch.xrc_rqpn[rail_index], retval);
                     MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN,
                                               "**fail", "**fail %s",
-                                              "Can't unreg RCV QP");
+                                              "Can't close XRC receive QP");
                 }
+                vc->ch.xrc_recv_qp[rail_index] = NULL;
+                vc->ch.xrc_my_rqpn[rail_index] = 0;
             }
             if (!USE_XRC || (VC_XST_ISUNSET(vc, XF_INDIRECT_CONN) &&
                              VC_XST_ISSET(vc, XF_SEND_IDLE)))
@@ -2613,8 +2636,10 @@ int MPIDI_CH3I_CM_Finalize(void)
                     MPL_snprintf(xrc_file, 512, "/dev/shm/%s-%d", ufile, hca_index);
                     unlink(xrc_file);
                 }
-                ibv_ops.close_xrc_domain(mv2_MPIDI_CH3I_RDMA_Process.
-                                     xrc_domain[i]);
+                if (mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[i]) {
+                    ibv_close_xrcd(mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[i]);
+                    mv2_MPIDI_CH3I_RDMA_Process.xrc_domain[i] = NULL;
+                }
                 if ((err = close(mv2_MPIDI_CH3I_RDMA_Process.xrc_fd[i]))) {
                     MPIR_ERR_SETFATALANDJUMP2(mpi_errno,
                                               MPI_ERR_INTERN,

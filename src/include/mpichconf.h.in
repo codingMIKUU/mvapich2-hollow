@@ -253,10 +253,6 @@
 /* Define if debugger support is included */
 #undef HAVE_DEBUGGER_SUPPORT
 
-/* Define to 1 if you have the declaration of `IBV_QPT_XRC', and to 0 if you
-   don't. */
-#undef HAVE_DECL_IBV_QPT_XRC
-
 /* Define to 1 if you have the declaration of `IBV_WC_DRIVER1', and to 0 if
    you don't. */
 #undef HAVE_DECL_IBV_WC_DRIVER1
@@ -346,9 +342,6 @@
 
 /* Define if struct hostent contains h_addr_list */
 #undef HAVE_H_ADDR_LIST
-
-/* Define to 1 if you have the `ibv_open_xrc_domain' function. */
-#undef HAVE_IBV_OPEN_XRC_DOMAIN
 
 /* Define to 1 if you have the `inet_pton' function. */
 #undef HAVE_INET_PTON
@@ -1393,7 +1386,7 @@
 /* Define to enable support for IBV_WC_DRIVER2 */
 #undef _ENABLE_WC_DRV2_
 
-/* Define to enable XRC support */
+/* Define to enable modern XRC support */
 #undef _ENABLE_XRC_
 
 /* Define to set the number of file offset bits */

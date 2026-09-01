@@ -7,7 +7,7 @@ Usage:
   HOSTS=192.0.2.11,192.0.2.12 \
   HCA_MAP=192.0.2.11=mlx5_1,192.0.2.12=mlx5_3 \
   USER_MAP=192.0.2.11=user1,192.0.2.12=user2 \
-    run_osu_collective.sh ordinary|hollow allreduce|alltoall [OSU options ...]
+    run_osu_collective.sh ordinary|xrc|hollow allreduce|alltoall [OSU options ...]
 
 Optional environment:
   NP=16 PPN=8
@@ -21,7 +21,7 @@ EOF
 
 mode=${1:-}
 benchmark=${2:-}
-case "$mode" in ordinary|hollow) ;; *) usage ;; esac
+case "$mode" in ordinary|xrc|hollow) ;; *) usage ;; esac
 case "$benchmark" in allreduce|alltoall) ;; *) usage ;; esac
 shift 2
 
@@ -110,6 +110,7 @@ MV2_REMOTE_INSTALL="$remote_install" \
     -ppn "$ppn" \
     -n "$np" \
     -genv HOLLOW_RC_HCA_MAP "$hca_map" \
+    -genv MV2_TRANSPORT_MODE "$mode" \
     -genv MV2_ON_DEMAND_THRESHOLD 2147483647 \
     -genv MV2_USE_UD_HYBRID 0 \
     -genv MV2_USE_ONLY_UD 0 \

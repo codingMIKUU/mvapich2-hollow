@@ -888,6 +888,7 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t * vc)
     memset(vc->ch.xrc_srqn, 0, sizeof(uint32_t) * MAX_NUM_HCAS);
     memset(vc->ch.xrc_rqpn, 0, sizeof(uint32_t) * MAX_NUM_SUBRAILS);
     memset(vc->ch.xrc_my_rqpn, 0, sizeof(uint32_t) * MAX_NUM_SUBRAILS);
+    memset(vc->ch.xrc_recv_qp, 0, sizeof(struct ibv_qp *) * MAX_NUM_SUBRAILS);
 #endif
 
     vc->smp.hostid = -1;

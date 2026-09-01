@@ -151,7 +151,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     /* XRC parameters specific to a process */
     uint32_t                    xrc_srqn[MAX_NUM_HCAS];
     int                         xrc_fd[MAX_NUM_HCAS];
-    struct ibv_xrc_domain       *xrc_domain[MAX_NUM_HCAS];
+    struct ibv_xrcd             *xrc_domain[MAX_NUM_HCAS];
 #endif /* _ENABLE_XRC_ */
 
 #ifdef _ENABLE_HOLLOW_RC_
@@ -339,11 +339,11 @@ do {                                                                    \
     if (unlikely(USE_XRC && VC_XST_ISUNSET ((_vc), XF_DPM_INI))) {                \
         int hca_index = _rail / (rdma_num_ports                         \
                 * rdma_num_qp_per_port);                                \
-        (_v)->desc.u.sr.xrc_remote_srq_num =                            \
+        (_v)->desc.u.sr.qp_type.xrc.remote_srqn =                        \
                 (_vc)->ch.xrc_srqn[hca_index];                          \
         PRINT_DEBUG(DEBUG_XRC_verbose>1, "Msg for %d. Fixed SRQN: %d (WQE: %d) (%s:%d)\n",      \
                 (_vc)->pg_rank,                                         \
-                (_v)->desc.u.sr.xrc_remote_srq_num,                     \
+                (_v)->desc.u.sr.qp_type.xrc.remote_srqn,                 \
                 (_vc)->mrail.rails[(_rail)].send_wqes_avail,            \
                 __FILE__, __LINE__);                                    \
         if (VC_XST_ISSET ((_vc), XF_INDIRECT_CONN)) {                   \

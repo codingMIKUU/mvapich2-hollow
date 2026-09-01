@@ -1301,9 +1301,6 @@ void async_thread(void *context)
     struct ibv_async_event event;
     struct ibv_srq_attr srq_attr;
     int post_new = 0, i = 0, hca_num = -1;
-#ifdef _ENABLE_XRC_
-    int xrc_event = 0; 
-#endif
 
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
@@ -1320,13 +1317,6 @@ void async_thread(void *context)
         }
 
         pthread_mutex_lock(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
-#ifdef _ENABLE_XRC_        
-        if (event.event_type & IBV_XRC_QP_EVENT_FLAG) {
-            event.event_type ^= IBV_XRC_QP_EVENT_FLAG;
-            xrc_event = 1;
-        }
-#endif
-
         switch (event.event_type) {
             /* Fatal */
             case IBV_EVENT_CQ_ERR:
@@ -1501,13 +1491,6 @@ void async_thread(void *context)
             default:
                 PRINT_ERROR("Got unknown event %d ... continuing ...\n", event.event_type);
         }
-#ifdef _ENABLE_XRC_
-        if (xrc_event) {
-            event.event_type |= IBV_XRC_QP_EVENT_FLAG;
-            xrc_event = 0;
-        }
-#endif
-
         ibv_ops.ack_async_event(&event);
         pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
     }

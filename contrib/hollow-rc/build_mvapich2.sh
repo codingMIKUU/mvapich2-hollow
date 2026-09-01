@@ -22,11 +22,11 @@ jobs=${JOBS:-$(getconf _NPROCESSORS_ONLN)}
 if [[ "$mode" == hollow ]]; then
     build_dir=${MVAPICH2_BUILD_DIR:-"$workspace_dir/mvapich2-build-hollow"}
     prefix=${MVAPICH2_PREFIX:-"$workspace_dir/mvapich2-2.3.7-hollow-install"}
-    mode_option=--enable-hollow-rc
+    mode_options=(--enable-hollow-rc --disable-xrc)
 else
     build_dir=${MVAPICH2_BUILD_DIR:-"$workspace_dir/mvapich2-build-ordinary"}
     prefix=${MVAPICH2_PREFIX:-"$workspace_dir/mvapich2-2.3.7-install"}
-    mode_option=--disable-hollow-rc
+    mode_options=(--disable-hollow-rc --enable-xrc)
 fi
 
 verbs_header="$rdma_build_dir/include/infiniband/verbs.h"
@@ -42,10 +42,11 @@ cd "$build_dir"
 
 CPPFLAGS="-I$rdma_build_dir/include ${CPPFLAGS:-}" \
 LDFLAGS="-L$rdma_build_dir/lib ${LDFLAGS:-}" \
+LIBS="-libverbs ${LIBS:-}" \
 CC=${CC:-gcc} CXX=${CXX:-g++} \
 "$source_dir/configure" \
     --prefix="$prefix" \
-    "$mode_option" \
+    "${mode_options[@]}" \
     --disable-fortran \
     --with-hwloc=v2 \
     --with-ib-include="$rdma_build_dir/include" \
@@ -53,6 +54,12 @@ CC=${CC:-gcc} CXX=${CXX:-g++} \
 
 make -j"$jobs"
 make -j"$jobs" install
+
+if [[ "$mode" == ordinary ]] &&
+   ! grep -q '^#define _ENABLE_XRC_ 1' "$build_dir/src/include/mpichconf.h"; then
+    echo "ordinary MVAPICH2 was built without the required modern XRC support" >&2
+    exit 1
+fi
 install -m 0755 "$script_dir/mv2_hca_rank_wrapper.sh" "$prefix/bin/"
 install -m 0755 "$script_dir/mv2_hydra_ssh_wrapper.sh" "$prefix/bin/"
 
