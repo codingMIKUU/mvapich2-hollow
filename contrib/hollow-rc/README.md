@@ -100,8 +100,28 @@ single-HCA, single-port, single-rail, SRQ and static-PMI setup so the ordinary
 and Hollow RC measurements are directly comparable. Replace `hollow` with
 `ordinary` to select the separately installed ordinary-RC build.
 
+Both installed modes also use Basic all-to-all connection management.  The
+rank wrapper fixes `MV2_ON_DEMAND_THRESHOLD=2147483647` and disables the UD
+hybrid/UD-only data paths, so large jobs do not silently switch to on-demand
+UD connection management.  Ordinary mode therefore pre-creates ordinary RC
+connections, while Hollow mode pre-creates logical Hollow RC connections.
+This avoids the oversized on-demand `cm_msg` on 1024-byte RoCE paths and keeps
+the connection-management policy identical in comparison runs.  Be aware
+that ordinary RC now pays the full QP and pinned-memory cost at large rank
+counts.
+
 The rank wrapper defaults to RoCE v2 (`MV2_USE_ROCE_MODE=2`), port 1 and GID
 index 3. Callers may override the RoCE mode, port or GID index explicitly.
+
+Each host reads the NUMA node of its selected HCA, builds an
+`MV2_CPU_MAPPING` from the online CPUs on that node, and starts the benchmark
+under `numactl --membind` for the same node.  For the current hosts this binds
+`mlx5_1` on lingbo11 and `mlx5_3` on lingbo12 to NUMA node 1 (CPUs 144-287).
+The generated mapping excludes CPU 174, which runs the Hollow scheduler, and
+CPU 175, which runs the Hollow connection server.  With `PPN=128`, ranks use
+CPUs 144-173 and 176-273 on each host.
+An explicitly supplied `MV2_CPU_MAPPING` overrides only the generated CPU
+order; rank memory remains local to the selected HCA's NUMA node.
 
 The rank wrapper defaults `MV2_SMP_USE_CMA=0`.  This avoids MPI_Init failure
 on machines whose Yama/container policy denies `process_vm_readv` between

@@ -83,6 +83,54 @@ export MV2_USE_ROCE_MODE=${MV2_USE_ROCE_MODE:-2}
 export MV2_USE_SRQ=1
 export MV2_USE_RING_STARTUP=0
 export MV2_USE_RDMA_CM=0
+# Use the same eager, all-to-all connection setup for ordinary and Hollow RC.
+# INT_MAX keeps every practical job below the on-demand threshold, while the
+# explicit UD settings prevent the separate UD/RC hybrid data path from being
+# selected.  Basic CM changes only connection setup; inter-node payload still
+# uses the transport selected by this installation (ordinary or Hollow RC).
+export MV2_ON_DEMAND_THRESHOLD=2147483647
+export MV2_USE_UD_HYBRID=0
+export MV2_USE_ONLY_UD=0
+
+# Keep each rank's CPU and memory on the NUMA node local to its selected HCA.
+# This is evaluated independently on every host, so heterogeneous HCA names
+# and CPU numberings do not require a launcher-side CPU map.  An explicit
+# MV2_CPU_MAPPING remains available for experiments that need a custom map.
+hca_device=$(readlink -f "/sys/class/infiniband/$hca/device")
+if [[ ! -r "$hca_device/numa_node" ]]; then
+    echo "Cannot determine NUMA node for HCA '$hca'." >&2
+    exit 1
+fi
+hca_numa_node=$(<"$hca_device/numa_node")
+if (( hca_numa_node < 0 )); then
+    echo "HCA '$hca' does not report a usable NUMA node." >&2
+    exit 1
+fi
+
+if [[ -z "${MV2_CPU_MAPPING:-}" ]]; then
+    # CPU 174 runs the single Hollow scheduler and CPU 175 runs its server
+    # thread on the current two hosts.  Keep both CPUs out of the MPI rank map
+    # in ordinary and Hollow runs so their CPU layouts remain comparable.
+    reserved_cpus=",174,175,"
+    cpu_mapping=$(lscpu -p=CPU,NODE | awk -F, -v node="$hca_numa_node" \
+        -v reserved="$reserved_cpus" '
+        $1 !~ /^#/ && $2 == node && index(reserved, "," $1 ",") == 0 {
+            if (mapping != "") mapping = mapping ":";
+            mapping = mapping $1;
+        }
+        END { print mapping }
+    ')
+    if [[ -z "$cpu_mapping" ]]; then
+        echo "No online CPUs found on NUMA node $hca_numa_node for HCA '$hca'." >&2
+        exit 1
+    fi
+    export MV2_CPU_MAPPING=$cpu_mapping
+fi
+
+if ! command -v numactl >/dev/null 2>&1; then
+    echo "numactl is required to bind rank memory to NUMA node $hca_numa_node." >&2
+    exit 1
+fi
 # CMA uses process_vm_readv/process_vm_writev between local ranks.  Some
 # systems prohibit that through Yama/container policy; use the portable
 # shared-memory copy path by default.  A caller may explicitly opt back in.
@@ -99,4 +147,4 @@ if [[ ! -x "$osu" ]]; then
     exit 1
 fi
 
-exec "$osu" "$@"
+exec numactl --membind="$hca_numa_node" "$osu" "$@"

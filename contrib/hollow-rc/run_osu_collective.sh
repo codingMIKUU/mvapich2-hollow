@@ -110,6 +110,9 @@ MV2_REMOTE_INSTALL="$remote_install" \
     -ppn "$ppn" \
     -n "$np" \
     -genv HOLLOW_RC_HCA_MAP "$hca_map" \
+    -genv MV2_ON_DEMAND_THRESHOLD 2147483647 \
+    -genv MV2_USE_UD_HYBRID 0 \
+    -genv MV2_USE_ONLY_UD 0 \
     -genv MV2_ENABLE_AFFINITY "${MV2_ENABLE_AFFINITY:-1}" \
     -genv MV2_CPU_BINDING_POLICY "${MV2_CPU_BINDING_POLICY:-scatter}" \
     /bin/bash -lc "$remote_command" mv2-rank "$benchmark" "$@"

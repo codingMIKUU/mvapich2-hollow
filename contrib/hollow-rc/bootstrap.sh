@@ -16,7 +16,7 @@ if [[ "$install_deps" == 1 ]] && command -v apt-get >/dev/null 2>&1; then
     packages=(
         build-essential cmake git pkg-config autoconf automake libtool
         bison flex gfortran libnl-3-dev libnl-route-3-dev libnuma-dev
-        libudev-dev libibmad-dev libibumad-dev
+        numactl libudev-dev libibmad-dev libibumad-dev
     )
     missing=()
     for package in "${packages[@]}"; do
