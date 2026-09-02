@@ -489,7 +489,9 @@ extern int mv2_use_mcast_pipeline_shm;
 int IS_SHMEM_WINDOW_REDUCE_HALF_FULL(int start, int end); 
 
 #if defined(CHANNEL_MRAIL_GEN2) || defined(CHANNEL_NEMESIS_IB)
+#ifndef MAX_NUM_HCAS
 #define MAX_NUM_HCAS                    (10)
+#endif
 typedef struct shm_coll_pkt{
      int  peer_rank;
      int  recv_id;

@@ -340,7 +340,9 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_FP_DEFAULT_BUF_SIZE        (4096)
 #define RDMA_UD_DEFAULT_NUM_RNDV_QPS    (64)
 /* DGX-2 boxes have 8 or 9 HCAs. Updating MAX_NUM_HCAS to 10 */
+#ifndef MAX_NUM_HCAS
 #define MAX_NUM_HCAS                    (10)
+#endif
 #ifndef MAX_NUM_PORTS
 /* Even multi-port HCAs are being detected as multiple, single
  * port HCAS. Reduce MAX_NUM_PORTS to offset the increase in
@@ -903,4 +905,3 @@ extern int dreg_max_use_count;
 #define DEFAULT_SPIN_COUNT               5000
 #define MAX_NUM_CQES_PER_POLL            96
 #define MIN_NUM_CQES_PER_POLL            1
-

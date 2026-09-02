@@ -40,7 +40,11 @@ fi
 mkdir -p "$build_dir"
 cd "$build_dir"
 
-CPPFLAGS="-I$rdma_build_dir/include ${CPPFLAGS:-}" \
+# The supported launch profile is deliberately one HCA, one port and one
+# rail.  Besides making that boundary explicit, narrowing these compile-time
+# maxima keeps the legacy UD connection message below a 1024-byte RoCE MTU
+# when modern XRC fields are enabled.
+CPPFLAGS="-DMAX_NUM_HCAS=1 -DMAX_NUM_PORTS=1 -DMAX_NUM_QP_PER_PORT=1 -I$rdma_build_dir/include ${CPPFLAGS:-}" \
 LDFLAGS="-L$rdma_build_dir/lib ${LDFLAGS:-}" \
 LIBS="-libverbs ${LIBS:-}" \
 CC=${CC:-gcc} CXX=${CXX:-g++} \

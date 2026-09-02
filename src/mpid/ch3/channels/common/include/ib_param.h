@@ -19,7 +19,9 @@
 #endif
 #include "mv2_arch_hca_detect.h"
 
+#ifndef MAX_NUM_HCAS
 #define MAX_NUM_HCAS                    (4)
+#endif
 
 /**
  *  Number of queue pairs per port.
