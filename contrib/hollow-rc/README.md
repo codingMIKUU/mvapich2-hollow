@@ -177,11 +177,13 @@ At startup rank 0 prints `MV2 transport=xrc` when the XRC path is active.
 XRC uses the modern rdma-core XRCD, XRC SRQ, XRC send-QP and receive-QP APIs;
 the previous removed `ibv_open_xrc_domain` API is not required.
 
-All scripted builds define `MAX_NUM_HCAS=1`, `MAX_NUM_PORTS=1` and
-`MAX_NUM_QP_PER_PORT=1`. This matches the supported single-rail profile and
-keeps MVAPICH2's fixed-size XRC connection message below the 1024-byte active
-RoCE MTU. A multi-HCA or multi-rail build requires a redesigned/fragmented
-connection message and is intentionally rejected by this build profile.
+All scripted builds define `MAX_NUM_HCAS=4`, `MAX_NUM_PORTS=1` and
+`MAX_NUM_QP_PER_PORT=1`. The HCA limit must cover devices enumerated before
+runtime filtering, while the job still selects exactly one HCA. The port/QP
+limits match the supported single-rail profile and keep MVAPICH2's fixed-size
+XRC connection message below the 1024-byte active RoCE MTU. A multi-HCA or
+multi-rail job requires a redesigned/fragmented connection message and is
+intentionally unsupported by this build profile.
 
 Both installed modes also use Basic all-to-all connection management.  The
 rank wrapper fixes `MV2_ON_DEMAND_THRESHOLD=2147483647` and disables the UD
