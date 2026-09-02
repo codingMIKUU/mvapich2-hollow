@@ -177,6 +177,10 @@ At startup rank 0 prints `MV2 transport=xrc` when the XRC path is active.
 XRC uses the modern rdma-core XRCD, XRC SRQ, XRC send-QP and receive-QP APIs;
 the previous removed `ibv_open_xrc_domain` API is not required.
 
+Hollow builds require custom verbs ABI version 2. XRC SRQ creation carries an
+explicit Hollow marker so the kernel applies shared-PD handling only to Hollow
+RC. Native XRC leaves the marker clear and retains standard XRCD/PD semantics.
+
 All scripted builds define `MAX_NUM_HCAS=4`, `MAX_NUM_PORTS=1` and
 `MAX_NUM_QP_PER_PORT=1`. The HCA limit must cover devices enumerated before
 runtime filtering, while the job still selects exactly one HCA. The port/QP

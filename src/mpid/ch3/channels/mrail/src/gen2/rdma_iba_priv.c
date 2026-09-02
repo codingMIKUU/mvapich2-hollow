@@ -348,6 +348,7 @@ struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                                 IBV_SRQ_INIT_ATTR_XRCD |
                                 IBV_SRQ_INIT_ATTR_CQ;
         hollow_attr.srq_type = IBV_SRQT_XRC;
+		hollow_attr.hollow_rc = 1;
         hollow_attr.pd = proc->ptag[hca_num];
         hollow_attr.xrcd = proc->hollow_xrcd[hca_num];
         hollow_attr.cq = proc->cq_hndl[hca_num];
