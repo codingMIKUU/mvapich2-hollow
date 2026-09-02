@@ -2212,6 +2212,11 @@ int MPICM_Init_UD_CM(uint32_t * ud_qpn)
 
         cm_ud_qp = ibv_ops.create_qp(mv2_MPIDI_CH3I_RDMA_Process.ptag[0], &attr);
         if (!cm_ud_qp) {
+            PRINT_ERROR("Couldn't create UD QP: errno=%d (%s), "
+                        "send_wr=%u recv_wr=%u send_sge=%u recv_sge=%u\n",
+                        errno, strerror(errno), attr.cap.max_send_wr,
+                        attr.cap.max_recv_wr, attr.cap.max_send_sge,
+                        attr.cap.max_recv_sge);
             MPIR_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                                       "**fail %s", "Couldn't create UD QP");
         }
