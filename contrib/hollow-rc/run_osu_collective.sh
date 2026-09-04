@@ -15,7 +15,7 @@ Optional environment:
   REMOTE_WORKSPACE=zxm
   RDMA_CORE_LIBDIR=/explicit/rdma-core/build/lib
   RUN_WDIR=/directory/available/on/all/hosts
-  MV2_MEMORY_OPTIMIZATION=0       # Hollow default; explicit values win
+  MV2_MEMORY_OPTIMIZATION=1       # Hollow default; explicit values win
   MV2_SRQ_SIZE=<initial receives> # Hollow default: power-of-two >= NP, min 256
   MV2_SRQ_LIMIT=<low watermark>   # Hollow default: one quarter of SRQ_SIZE
   MV2_SRQ_MAX_SIZE=<maximum>      # Hollow default: 8192
@@ -116,7 +116,11 @@ if [[ "$mode" == hollow ]]; then
         auto_srq_size=$((auto_srq_size * 2))
     done
 
-    hollow_memory_optimization=${MV2_MEMORY_OPTIMIZATION:-0}
+    # Keep MVAPICH2's memory-saving vbuf policy by default.  The receive pool
+    # grows in secondary batches when SRQ_SIZE exceeds the initial vbuf pool,
+    # so disabling memory optimization is unnecessary and can exhaust the
+    # per-node HugeTLB pool when many local ranks start simultaneously.
+    hollow_memory_optimization=${MV2_MEMORY_OPTIMIZATION:-1}
     hollow_srq_size=${MV2_SRQ_SIZE:-$auto_srq_size}
     hollow_srq_limit=${MV2_SRQ_LIMIT:-$((hollow_srq_size / 4))}
     hollow_srq_max_size=${MV2_SRQ_MAX_SIZE:-8192}
