@@ -33,7 +33,7 @@ fi
 # of creating a hard-to-reproduce crash.
 account_name=$(id -un)
 if pgrep -u "$(id -u)" -f \
-    '(^|/)(osu_(allreduce|alltoall)|mpiexec|hydra_pmi_proxy)( |$)' \
+    '(^|/)(osu_(allreduce|alltoall|bcast)|mpiexec|hydra_pmi_proxy)( |$)' \
     >/dev/null 2>&1; then
     echo "An OSU/Hydra process owned by $account_name is still running." >&2
     echo "Stop the MPI job before replacing its rdma-core runtime libraries." >&2

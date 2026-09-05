@@ -2,13 +2,14 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: $0 allreduce|alltoall [OSU options ...]" >&2
+    echo "Usage: $0 allreduce|alltoall|bcast [OSU options ...] (broadcast is an alias for bcast)" >&2
     exit 2
 }
 
 benchmark=${1:-}
 case "$benchmark" in
-    allreduce|alltoall) shift ;;
+    broadcast) benchmark=bcast; shift ;;
+    allreduce|alltoall|bcast) shift ;;
     *) usage ;;
 esac
 

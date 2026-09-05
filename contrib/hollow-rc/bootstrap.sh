@@ -64,6 +64,7 @@ for prefix in "$ordinary_prefix" "$hollow_prefix"; do
         "$prefix/bin/mpiexec" \
         "$prefix/libexec/osu-micro-benchmarks/mpi/collective/osu_allreduce" \
         "$prefix/libexec/osu-micro-benchmarks/mpi/collective/osu_alltoall" \
+        "$prefix/libexec/osu-micro-benchmarks/mpi/collective/osu_bcast" \
         "$prefix/lib/hollow-rc-rdma/libibverbs.so" \
         "$prefix/lib/hollow-rc-rdma/libmlx5.so"; do
         if [[ ! -e "$required" ]]; then
@@ -90,3 +91,4 @@ echo "Run OSU tests from this source tree with:"
 echo "  contrib/hollow-rc/run_osu_collective.sh ordinary allreduce [OSU arguments]"
 echo "  contrib/hollow-rc/run_osu_collective.sh xrc allreduce [OSU arguments]"
 echo "  contrib/hollow-rc/run_osu_collective.sh hollow allreduce [OSU arguments]"
+echo "  contrib/hollow-rc/run_osu_collective.sh ordinary|xrc|hollow bcast [OSU arguments]"
