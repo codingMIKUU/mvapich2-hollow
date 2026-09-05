@@ -177,6 +177,98 @@ At startup rank 0 prints `MV2 transport=xrc` when the XRC path is active.
 XRC uses the modern rdma-core XRCD, XRC SRQ, XRC send-QP and receive-QP APIs;
 the previous removed `ibv_open_xrc_domain` API is not required.
 
+## Controlled Allreduce comparisons
+
+Set `ALLREDUCE_PROFILE` on the existing launcher to select the same Allreduce
+organization for ordinary RC, XRC, and Hollow RC. This is a **launcher option**,
+not an upstream MVAPICH2 variable. It expands to native `-genv` arguments for
+all ranks, including those launched under a different remote user account.
+It requires no MPI/rdma-core/kernel rebuild or update to installed wrappers.
+
+| Profile | Organization | Main algorithm (`INTER`) | Local reduction (`INTRA`) |
+| --- | --- | --- | --- |
+| `auto` (default) | MVAPICH defaults or native user overrides | Automatic/user-specified | Automatic/user-specified |
+| `flat-rd` | All ranks participate in the global algorithm | Recursive Doubling (`1`) | No separate local reduction phase |
+| `flat-rsag` | All ranks participate in the global algorithm | Point-to-point Reduce-scatter + Allgather (`2`) | No separate local reduction phase |
+| `twolevel-rd-shmem` | Local reduction, leader exchange, local distribution | Leader Recursive Doubling (`1`) | Shared-memory Reduce (`5`) |
+| `twolevel-rsag-shmem` | Local reduction, leader exchange, local distribution | Leader Reduce-scatter + Allgather (`2`) | Shared-memory Reduce (`5`) |
+| `twolevel-rd-p2p` | Local reduction, leader exchange, local distribution | Leader Recursive Doubling (`1`) | Point-to-point Reduce (`6`) |
+
+For example, keep local reduction fixed while comparing transports:
+
+```bash
+HOSTS=192.168.1.5,192.168.1.1 \
+HCA_MAP=192.168.1.5=mlx5_1,192.168.1.1=mlx5_3 \
+USER_MAP=192.168.1.5=lingbo11,192.168.1.1=lingbo12 \
+NP=256 PPN=128 \
+ALLREDUCE_PROFILE=twolevel-rd-shmem \
+MV2_RNDV_PROTOCOL=RPUT MV2_IBA_EAGER_THRESHOLD=8192 \
+contrib/hollow-rc/run_osu_collective.sh ordinary allreduce \
+  -m 1024:32768 -i 1000 -x 500 -f
+```
+
+Replace only `ordinary` with `xrc` or `hollow` for the corresponding comparison.
+Use `flat-rd`/`flat-rsag` for comparisons without first aggregating local ranks
+into one leader. Flat does **not** disable shared-memory transport between
+ranks on the same host. On two hosts, a two-level data phase involves two node
+leaders, not all ranks sending across nodes simultaneously.
+
+Fixed profiles explicitly set the main algorithm, the two-level flag, and
+the local reduction. They use the current indexed OSU collective framework,
+keep shared-memory communication enabled, and disable the Allreduce small/
+large-message table shortcuts, multicast, and SHARP. All aliases of the
+separate MPI_T Allreduce algorithm selector are set to `-1` (unselected).
+Flat profiles also set `INTRA=5` for a consistent configuration, but it is
+unused when the two-level flag is zero. Topology-aware communicator creation
+is left unchanged; the fixed user selection bypasses the automatic topology
+shortcut for this Allreduce call.
+
+Conflicting exported native settings, such as
+`MV2_INTER_ALLREDUCE_TUNING=2 ALLREDUCE_PROFILE=flat-rd`, cause an error **before
+MPI/SSH starts**. Unset the conflicting variable or use `ALLREDUCE_PROFILE=auto`
+to tune through native MVAPICH2 variables instead. `auto` adds no algorithm
+overrides and preserves existing commands. Selecting a non-auto Allreduce
+profile for `alltoall` is rejected, avoiding an unnoticed experiment mismatch.
+
+Profiles do not set the Eager threshold, Rendezvous protocol, CPU mapping,
+CMA, SRQ sizing, or Hollow KQP/DB/scheduler parameters. Keep those equal across
+comparison runs as appropriate. RPUT is a common Rendezvous baseline for all
+three modes; native XRC does not support the RGET selection in this version.
+
+The launcher prints, for example:
+
+```text
+ALLREDUCE_CONFIG scope=requested transport=hollow profile=twolevel-rd-shmem inter=1 two_level=1 intra=5 np=256 ppn=128
+```
+
+This reports the **requested launch configuration**, not a sampled record of
+which MPI function actually executed. Required datatype/count/communicator
+fallbacks still apply. For example, the shared-memory Reduce implementation
+falls back at its buffer-size limit (initially 128 KiB), and RS+AG may fall back
+for insufficient element counts. The 1--32 KiB `osu_allreduce` comparison with
+its built-in `MPI_FLOAT`/`MPI_SUM` operation avoids those particular size/count
+limits for the usual rank layouts. OSU correctness checks (`-c`) and startup
+also make additional collective calls, which need not follow the benchmark's
+steady-state message-size path.
+
+For argument inspection, add `DRY_RUN=1` to the same command. It validates the
+profile and prints the fully expanded launcher arguments without starting
+MPI, SSH, or RDMA. This requires the selected local installation to exist.
+The printed command is for inspection, not replay: temporary Hydra hostfiles
+are cleaned up on exit.
+
+Launcher regression tests (no MPI, SSH, or RDMA required):
+
+```bash
+python3 contrib/hollow-rc/tests/test_allreduce_profiles.py
+```
+
+Script-only updates can be deployed with `git pull --ff-only` in the existing
+checkout on each machine. In the current setup the checkout is
+`~/zxm/mvapich2-2.3.7` on lingbo11 and `~/zxm/mvapich2-hollow-git` on lingbo12.
+The old `~/zxm/mvapich2-2.3.7` directory on lingbo12 is not the Git checkout.
+Do not rebuild or change installation paths just to use these profiles.
+
 Hollow builds require custom verbs ABI version 2. XRC SRQ creation carries an
 explicit Hollow marker so the kernel applies shared-PD handling only to Hollow
 RC. Native XRC leaves the marker clear and retains standard XRCD/PD semantics.

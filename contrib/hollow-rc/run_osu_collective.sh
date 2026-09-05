@@ -15,6 +15,10 @@ Optional environment:
   REMOTE_WORKSPACE=zxm
   RDMA_CORE_LIBDIR=/explicit/rdma-core/build/lib
   RUN_WDIR=/directory/available/on/all/hosts
+  ALLREDUCE_PROFILE=auto         # Keep MVAPICH defaults/native MV2 overrides
+    # Or: flat-rd, flat-rsag, twolevel-rd-shmem, twolevel-rsag-shmem,
+    #     twolevel-rd-p2p. Fixed profiles are identical for all transports.
+  DRY_RUN=1                     # Print launch arguments; do not start MPI/SSH
   MV2_MEMORY_OPTIMIZATION=1       # Hollow default; explicit values win
   MV2_SRQ_SIZE=<initial receives> # Hollow default: power-of-two >= NP, min 256
   MV2_SRQ_LIMIT=<low watermark>   # Hollow default: one quarter of SRQ_SIZE
@@ -28,6 +32,70 @@ benchmark=${2:-}
 case "$mode" in ordinary|xrc|hollow) ;; *) usage ;; esac
 case "$benchmark" in allreduce|alltoall) ;; *) usage ;; esac
 shift 2
+
+# Apply only at launch, never in the MPI/verbs data path. Explicit -genv
+# arguments carry the same settings to every rank, including remote accounts.
+# Native MV2 overrides remain available with the default profile, "auto".
+allreduce_profile=${ALLREDUCE_PROFILE:-auto}
+allreduce_args=()
+allreduce_settings=()
+dry_run=${DRY_RUN:-0}
+if [[ "$dry_run" != 0 && "$dry_run" != 1 ]]; then
+    echo "DRY_RUN must be 0 or 1." >&2
+    exit 1
+fi
+if [[ "$benchmark" != allreduce && "$allreduce_profile" != auto ]]; then
+    echo "ALLREDUCE_PROFILE applies only to allreduce, not $benchmark." >&2
+    exit 1
+fi
+if [[ "$benchmark" == allreduce && "$allreduce_profile" != auto ]]; then
+    allreduce_intra=5
+    case "$allreduce_profile" in
+        flat-rd)              allreduce_inter=1; allreduce_two_level=0 ;;
+        flat-rsag)            allreduce_inter=2; allreduce_two_level=0 ;;
+        twolevel-rd-shmem)    allreduce_inter=1; allreduce_two_level=1 ;;
+        twolevel-rsag-shmem)  allreduce_inter=2; allreduce_two_level=1 ;;
+        twolevel-rd-p2p)      allreduce_inter=1; allreduce_two_level=1; allreduce_intra=6 ;;
+        *)
+            echo "Unknown ALLREDUCE_PROFILE '$allreduce_profile'. See usage in this script." >&2
+            exit 1
+            ;;
+    esac
+    allreduce_settings=(
+        "MV2_INTER_ALLREDUCE_TUNING=$allreduce_inter"
+        "MV2_INTER_ALLREDUCE_TUNING_TWO_LEVEL=$allreduce_two_level"
+        "MV2_INTRA_ALLREDUCE_TUNING=$allreduce_intra"
+        MV2_USE_OSU_COLLECTIVES=1
+        MV2_USE_ANL_COLLECTIVES=0
+        MV2_USE_OLD_ALLREDUCE=0
+        MV2_USE_INDEXED_ALLREDUCE_TUNING=1
+        MV2_USE_SHARED_MEM=1
+        MV2_USE_SHMEM_COLL=1
+        MV2_USE_SHMEM_ALLREDUCE=1
+        MV2_USE_BLOCKING=0
+        MV2_ENABLE_ALLREDUCE_SKIP_SMALL_MESSAGE_TUNING_TABLE_SEARCH=0
+        MV2_ENABLE_ALLREDUCE_SKIP_LARGE_MESSAGE_TUNING_TABLE_SEARCH=0
+        MV2_USE_MCAST=0
+        MV2_ENABLE_SHARP=0
+        # MPI_T uses a separate numbering scheme and conflicts with MV2_INTER.
+        # Set all aliases to their "not selected" value, also preventing a
+        # per-host config file from supplying a conflicting CVAR selection.
+        MPICH_ALLREDUCE_COLLECTIVE_ALGORITHM=-1
+        MV2_ALLREDUCE_COLLECTIVE_ALGORITHM=-1
+        MPIR_PARAM_ALLREDUCE_COLLECTIVE_ALGORITHM=-1
+        MPIR_CVAR_ALLREDUCE_COLLECTIVE_ALGORITHM=-1
+    )
+    for allreduce_setting in "${allreduce_settings[@]}"; do
+        allreduce_name=${allreduce_setting%%=*}
+        allreduce_value=${allreduce_setting#*=}
+        if [[ -v "$allreduce_name" && "${!allreduce_name}" != "$allreduce_value" ]]; then
+            echo "ALLREDUCE_PROFILE=$allreduce_profile conflicts with $allreduce_name=${!allreduce_name} (requires $allreduce_value)." >&2
+            echo "Unset the conflicting variable, or use ALLREDUCE_PROFILE=auto for native MV2 tuning." >&2
+            exit 1
+        fi
+        allreduce_args+=(-genv "$allreduce_name" "$allreduce_value")
+    done
+fi
 
 hosts=${HOSTS:-}
 hca_map=${HCA_MAP:-}
@@ -156,9 +224,19 @@ if [[ -n "$hostfile" ]]; then
     host_args=(-f "$hostfile")
 fi
 
-MV2_REMOTE_WORKSPACE="$remote_workspace" \
-MV2_REMOTE_INSTALL="$remote_install" \
-"$mpiexec" \
+if [[ "$benchmark" == allreduce ]]; then
+    if [[ "$allreduce_profile" == auto ]]; then
+        echo "ALLREDUCE_CONFIG scope=requested transport=$mode profile=auto selection=MVAPICH-default-or-native-MV2-overrides np=$np ppn=$ppn"
+    else
+        allreduce_intra_label=$allreduce_intra
+        if (( allreduce_two_level == 0 )); then
+            allreduce_intra_label=unused-flat
+        fi
+        echo "ALLREDUCE_CONFIG scope=requested transport=$mode profile=$allreduce_profile inter=$allreduce_inter two_level=$allreduce_two_level intra=$allreduce_intra_label np=$np ppn=$ppn"
+    fi
+fi
+
+launch_args=("$mpiexec"
     "${host_args[@]}" \
     -launcher-exec "$prefix/bin/mv2_hydra_ssh_wrapper.sh" \
     -wdir "$run_wdir" \
@@ -172,4 +250,19 @@ MV2_REMOTE_INSTALL="$remote_install" \
     -genv MV2_ENABLE_AFFINITY "${MV2_ENABLE_AFFINITY:-1}" \
     -genv MV2_CPU_BINDING_POLICY "${MV2_CPU_BINDING_POLICY:-scatter}" \
     "${hollow_srq_args[@]}" \
-    /bin/bash -lc "$remote_command" mv2-rank "$benchmark" "$@"
+    "${allreduce_args[@]}" \
+    /bin/bash -lc "$remote_command" mv2-rank "$benchmark" "$@")
+
+if [[ "$dry_run" == 1 ]]; then
+    # This is an inspection output, not a replay script: a temporary hostfile
+    # (when USER_MAP is supplied) is removed by the normal EXIT trap.
+    printf 'DRY_RUN hosts=%s user_map=%s\n' "$hosts" "$user_map"
+    printf 'MV2_REMOTE_WORKSPACE=%q MV2_REMOTE_INSTALL=%q ' "$remote_workspace" "$remote_install"
+    printf '%q ' "${launch_args[@]}"
+    printf '\n'
+    exit 0
+fi
+
+MV2_REMOTE_WORKSPACE="$remote_workspace" \
+MV2_REMOTE_INSTALL="$remote_install" \
+"${launch_args[@]}"
