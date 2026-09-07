@@ -18,9 +18,10 @@ Optional environment:
   RDMA_CORE_LIBDIR=/explicit/rdma-core/build/lib
   RUN_WDIR=/directory/available/on/all/hosts
   MV2_MEMORY_OPTIMIZATION=1       # Hollow default; explicit values win
-  MV2_SRQ_SIZE=<initial receives> # Hollow default: power-of-two >= NP, min 256
-  MV2_SRQ_LIMIT=<low watermark>   # Hollow default: one quarter of SRQ_SIZE
+  MV2_SRQ_SIZE=<initial receives> # Hollow default: 80 with memory optimization
+  MV2_SRQ_LIMIT=<low watermark>   # Hollow default: 10 with memory optimization
   MV2_SRQ_MAX_SIZE=<maximum>      # Hollow default: 8192
+  # With MV2_MEMORY_OPTIMIZATION=0, defaults follow ordinary RC: SIZE=256, LIMIT=30.
 EOF
     exit 2
 }
@@ -104,37 +105,36 @@ remote_command='account_home=$(getent passwd "$(id -u)" | cut -d: -f6); for pref
 
 hollow_srq_args=()
 if [[ "$mode" == hollow ]]; then
-    for numeric_value in "$np" "${MV2_SRQ_SIZE:-256}" \
-                         "${MV2_SRQ_LIMIT:-30}" \
-                         "${MV2_SRQ_MAX_SIZE:-8192}"; do
+    hollow_memory_optimization=${MV2_MEMORY_OPTIMIZATION:-1}
+    if [[ ! "$hollow_memory_optimization" =~ ^[01]$ ]]; then
+        echo "MV2_MEMORY_OPTIMIZATION must be 0 or 1." >&2
+        exit 1
+    fi
+
+    # Match rdma_get_vbuf_user_parameters() instead of scaling the initial
+    # receive pool with NP.  This aligns memory experiments with ordinary RC.
+    # The library still grows the pool on low-water events, up to MAX_SIZE.
+    # Smaller initial pools can increase RNR under heavy all-to-all fan-in;
+    # retain explicit overrides for workloads that need more preposted WRs.
+    if [[ "$hollow_memory_optimization" == 1 ]]; then
+        default_srq_size=80
+        default_srq_limit=10
+    else
+        default_srq_size=256
+        default_srq_limit=30
+    fi
+    hollow_srq_size=${MV2_SRQ_SIZE:-$default_srq_size}
+    hollow_srq_limit=${MV2_SRQ_LIMIT:-$default_srq_limit}
+    hollow_srq_max_size=${MV2_SRQ_MAX_SIZE:-8192}
+
+    for numeric_value in "$np" "$hollow_srq_size" \
+                         "$hollow_srq_limit" "$hollow_srq_max_size"; do
         if [[ ! "$numeric_value" =~ ^[1-9][0-9]*$ ]]; then
             echo "Hollow SRQ values and NP must be positive integers." >&2
             exit 1
         fi
     done
 
-    # One eager SEND consumes one Receive WQE.  Size the initial per-rank SRQ
-    # for one worst-case all-to-all fan-in instead of MVAPICH2's memory-saving
-    # default of 80 entries.  Round up for stable queue geometry and retain a
-    # minimum suitable for smaller jobs.
-    auto_srq_size=256
-    while (( auto_srq_size < np )); do
-        auto_srq_size=$((auto_srq_size * 2))
-    done
-
-    # Keep MVAPICH2's memory-saving vbuf policy by default.  The receive pool
-    # grows in secondary batches when SRQ_SIZE exceeds the initial vbuf pool,
-    # so disabling memory optimization is unnecessary and can exhaust the
-    # per-node HugeTLB pool when many local ranks start simultaneously.
-    hollow_memory_optimization=${MV2_MEMORY_OPTIMIZATION:-1}
-    hollow_srq_size=${MV2_SRQ_SIZE:-$auto_srq_size}
-    hollow_srq_limit=${MV2_SRQ_LIMIT:-$((hollow_srq_size / 4))}
-    hollow_srq_max_size=${MV2_SRQ_MAX_SIZE:-8192}
-
-    if [[ ! "$hollow_memory_optimization" =~ ^[01]$ ]]; then
-        echo "MV2_MEMORY_OPTIMIZATION must be 0 or 1." >&2
-        exit 1
-    fi
     if (( hollow_srq_limit >= hollow_srq_size )); then
         echo "MV2_SRQ_LIMIT must be smaller than MV2_SRQ_SIZE." >&2
         exit 1
@@ -162,6 +162,13 @@ if [[ -n "$hostfile" ]]; then
     host_args=(-f "$hostfile")
 fi
 
+# Explicitly propagate the optional sampler's job identity through Hydra.
+# This avoids identifying ranks by process name alone across concurrent jobs.
+memory_args=()
+if [[ -n "${MV2_MEM_RUN_ID:-}" ]]; then
+    memory_args=(-genv MV2_MEM_RUN_ID "$MV2_MEM_RUN_ID")
+fi
+
 MV2_REMOTE_WORKSPACE="$remote_workspace" \
 MV2_REMOTE_INSTALL="$remote_install" \
 "$mpiexec" \
@@ -178,4 +185,5 @@ MV2_REMOTE_INSTALL="$remote_install" \
     -genv MV2_ENABLE_AFFINITY "${MV2_ENABLE_AFFINITY:-1}" \
     -genv MV2_CPU_BINDING_POLICY "${MV2_CPU_BINDING_POLICY:-scatter}" \
     "${hollow_srq_args[@]}" \
+    "${memory_args[@]}" \
     /bin/bash -lc "$remote_command" mv2-rank "$benchmark" "$@"

@@ -103,6 +103,8 @@ int (*MV2_Allreduce_intra_function)(const void *sendbuf,
 
 static int (*MPIR_Rank_list_mapper)(MPID_Comm *, int)=NULL;
 
+#include "allreduce_phase_diag.h"
+
 #define RING_ALLREDUCE_FALLBACK(_sendbuf,_recvbuf,_count,_datatype,_op,_comm_ptr,_errflag,_nbytes,_comm_size)       \
     do {                                                                                                            \
     if (64*1024 <= _nbytes/_comm_size) {                                                                            \
@@ -1699,6 +1701,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, local_size = 0;
+    MV2_AR_PHASE_DECLARE;
 
     if (count == 0) {
         MPIR_TIMER_END(coll,allreduce,2lvl);
@@ -1717,6 +1720,8 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     leader_comm = comm_ptr->dev.ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
+    /* Include the leader's initial input copy in the local-reduce phase. */
+    MV2_AR_PHASE_BEGIN();
     if (local_rank == 0) {
         if (sendbuf != MPI_IN_PLACE) {
             mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
@@ -1747,6 +1752,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
             MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
 
+        MV2_AR_PHASE_REDUCED();
         if (local_size != total_size) {
             /* inter-node allreduce */
             
@@ -1806,9 +1812,11 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
                 MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
+        MV2_AR_PHASE_REDUCED();
     }
 
     /* Broadcasting the message from leader to the rest */
+    MV2_AR_PHASE_BCAST();
     mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */
@@ -1818,6 +1826,7 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     }
 
   fn_exit:
+    MV2_AR_PHASE_END();
     MPIR_TIMER_END(coll,allreduce,2lvl);
     return (mpi_errno);
 

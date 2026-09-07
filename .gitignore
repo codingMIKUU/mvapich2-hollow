@@ -26,6 +26,9 @@ Makefile
 *.trs
 .state-cache
 
+# Local benchmark measurements (keep all result formats out of Git).
+/memory-results/
+
 # Generated local executables and temporary files
 src/env/mpiname/mpiname
 **/confdb/ylwrap

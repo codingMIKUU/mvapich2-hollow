@@ -133,5 +133,5 @@ mpi_core_sources += \
     src/mpi/coll/nbcutil.c
 
 noinst_HEADERS +=           \
+    src/mpi/coll/allreduce_phase_diag.h \
     src/mpi/coll/collutil.h
-

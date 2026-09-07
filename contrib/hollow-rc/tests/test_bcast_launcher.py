@@ -90,6 +90,54 @@ class BroadcastLauncherTests(unittest.TestCase):
                 self.assertIn("No HCA mapping", result.stderr)
                 self.assertNotIn("Usage:", result.stderr)
 
+    def test_hollow_srq_defaults_match_ordinary_memory_policy(self):
+        for np in (4, 256, 1024):
+            with self.subTest(np=np):
+                self.env["NP"] = str(np)
+                self.env["PPN"] = str(np // 2)
+                argv = self.launch("hollow", "alltoall")["argv"]
+                for name, expected in (("MV2_MEMORY_OPTIMIZATION", "1"),
+                                       ("MV2_SRQ_SIZE", "80"),
+                                       ("MV2_SRQ_LIMIT", "10"),
+                                       ("MV2_SRQ_MAX_SIZE", "8192")):
+                    self.assertEqual(argv[argv.index(name) + 1], expected)
+                self.assertNotIn("MV2_VBUF_SECONDARY_POOL_SIZE", argv)
+        self.env["MV2_MEMORY_OPTIMIZATION"] = "0"
+        argv = self.launch("hollow", "alltoall")["argv"]
+        self.assertEqual(argv[argv.index("MV2_SRQ_SIZE") + 1], "256")
+        self.assertEqual(argv[argv.index("MV2_SRQ_LIMIT") + 1], "30")
+
+    def test_hollow_srq_explicit_overrides_are_preserved(self):
+        overrides = {"MV2_SRQ_SIZE": "256", "MV2_SRQ_LIMIT": "64",
+                     "MV2_SRQ_MAX_SIZE": "1024"}
+        self.env.update(overrides)
+        argv = self.launch("hollow", "allreduce")["argv"]
+        for name, expected in overrides.items():
+            self.assertEqual(argv[argv.index(name) + 1], expected)
+
+    def test_ordinary_and_xrc_srq_arguments_are_unchanged(self):
+        for mode in ("ordinary", "xrc"):
+            argv = self.launch(mode, "alltoall")["argv"]
+            for name in ("MV2_MEMORY_OPTIMIZATION", "MV2_SRQ_SIZE",
+                         "MV2_SRQ_LIMIT", "MV2_SRQ_MAX_SIZE",
+                         "MV2_VBUF_SECONDARY_POOL_SIZE"):
+                self.assertNotIn(name, argv)
+
+    def test_invalid_hollow_srq_settings_stop_before_mpi(self):
+        for overrides in ({"MV2_SRQ_LIMIT": "80"},
+                          {"MV2_SRQ_MAX_SIZE": "64"},
+                          {"MV2_SRQ_SIZE": "-1"},
+                          {"MV2_MEMORY_OPTIMIZATION": "2"}):
+            result = subprocess.run(
+                ["bash", str(SCRIPTS / "run_osu_collective.sh"),
+                 "hollow", "alltoall"],
+                env=dict(self.env, **overrides), stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, universal_newlines=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertNotIn('"argv"', result.stdout)
+            self.assertFalse(list(self.prefix.glob("mv2-hollow-hosts.*")))
+
 
 if __name__ == "__main__":
     unittest.main()

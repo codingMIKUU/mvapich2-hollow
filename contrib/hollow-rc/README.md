@@ -1,5 +1,9 @@
 # MVAPICH2 Hollow RC build and OSU runs
 
+For per-node and cluster OSU rank RSS peaks (with optional PSS), see
+[用户进程内存测量](MEMORY_MEASUREMENT.md). The sampler wraps the existing
+collective launcher and does not require rebuilding MPI.
+
 ## One-command installation on a new machine
 
 Install the Hollow RC kernel driver first, clone this repository under a
@@ -51,6 +55,63 @@ If dependencies are already installed, the same single entry point is:
 ```bash
 INSTALL_DEPS=0 JOBS="$(nproc)" ./install_hollow_rc.sh
 ```
+
+## Install only MVAPICH2 with an existing Hollow driver build
+
+If the matching Hollow kernel driver and custom rdma-core are already built
+and installed, do **not** use `bootstrap.sh` or `install_hollow_rc.sh`: those
+also build rdma-core. Reuse its existing headers and libraries instead.
+The original rdma-core `build.sh` produces `rdma-core/build`, not
+`rdma-core/build-codex`.
+
+For a new account such as `lingbo10`, after cloning this repository as above:
+
+```bash
+cd ~/zxm/mvapich2-2.3.7
+
+# Use the existing directory, without reconfiguring/rebuilding rdma-core.
+rdma_existing_build="$HOME/zxm/rdma-core/build"
+test -r "$rdma_existing_build/include/infiniband/verbs.h" &&
+test -r "$rdma_existing_build/lib/libibverbs.so" &&
+test -r "$rdma_existing_build/lib/libmlx5.so" &&
+test -r "$rdma_existing_build/lib/librdmacm.so" &&
+RDMA_CORE_BUILD="$rdma_existing_build" JOBS=8 \
+    contrib/hollow-rc/build_mvapich2.sh hollow
+```
+
+If the existing output is `build-codex`, change only `rdma_existing_build`.
+If only an installed prefix remains, it can be used when it contains the
+same `include/infiniband/verbs.h` and `lib/` layout with the matching custom
+libraries. A layout using `lib64/` or `lib/x86_64-linux-gnu/` is not accepted
+by this helper as-is; determine the actual development/runtime paths before
+proceeding. Merely having a kernel module or system libibverbs is insufficient.
+
+Only if ordinary RC/XRC comparison is also wanted, additionally run:
+
+```bash
+RDMA_CORE_BUILD="$rdma_existing_build" JOBS=8 \
+    contrib/hollow-rc/build_mvapich2.sh ordinary
+```
+
+The helper configures/builds/installs MPI and its OSU benchmarks, installs
+the launcher wrappers, and bundles copies of the existing rdma-core runtime.
+It does not compile or install either RDMA driver, use sudo, change shell
+startup files, or overwrite the system MPI. The default Hollow installation
+is `~/zxm/mvapich2-2.3.7-hollow-install` and the build directory is
+`~/zxm/mvapich2-build-hollow`.
+
+Run as the login user, not root. Install missing build tools separately if
+necessary (Ubuntu: `build-essential git pkg-config autoconf automake libtool
+ bison flex libnuma-dev numactl python3`). Use the new machine's actual IP,
+HCA name, port and GID when running; do not copy another host's HCA selection.
+The current rank wrapper derives the NUMA node from the selected HCA and
+reserves CPUs 174/175 by default; supply an appropriate `MV2_CPU_MAPPING` if
+the new machine's scheduler uses different CPUs. A local shared-memory OSU
+run alone does not validate the inter-node Hollow transport.
+
+For sampled Allreduce phase timings, see
+[阶段计时](ALLREDUCE_PHASE_DIAGNOSTICS.md). Benchmark output directories under
+`memory-results/` are intentionally ignored by Git and are not synchronized.
 
 ## Rebuild only rdma-core after a userspace-provider change
 
@@ -115,6 +176,26 @@ Hydra's propagated `$HOME`. This avoids the former `lingbo11` versus
 The launcher uses `/tmp` as the default process working directory because
 the two accounts have different absolute home-directory paths. Set
 `RUN_WDIR` only to a path that exists on every participating machine.
+
+### SRQ defaults for comparable memory measurements
+
+With the default `MV2_MEMORY_OPTIMIZATION=1`, Hollow now follows ordinary
+RC/XRC: `MV2_SRQ_SIZE=80`, `MV2_SRQ_LIMIT=10`, `MV2_SRQ_MAX_SIZE=8192`.
+The VBUF expansion batch remains the library default of 16. The launcher no
+longer scales the initial receive pool with NP. With memory optimization
+explicitly disabled, its SRQ defaults instead follow ordinary RC's 256/30.
+Explicit SRQ environment variables still take precedence: remove older
+`MV2_SRQ_SIZE=256 MV2_SRQ_LIMIT=64` overrides to use the new 80/10 defaults.
+
+This aligns initial allocation policy, not final memory consumption: the
+existing SRQ low-water handler can still grow the posted receive target.
+High-fan-in Alltoall may incur more RNR retries or exhaust the retry count
+with only 80 preposted receives. If needed, set `MV2_SRQ_SIZE=256` and
+`MV2_SRQ_LIMIT=64` for **all compared modes**, rather than only Hollow.
+These are launcher changes; no MPI/driver rebuild or module reload is needed.
+Launching the two-node job from this updated script passes the settings to
+both nodes. Launching independently on another node requires its script to
+be updated too.
 
 Single-machine example (replace the IP with this machine's reachable IP):
 
